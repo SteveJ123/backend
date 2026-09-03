@@ -1144,7 +1144,7 @@ app.put("/api/courses/:id", upload.single("thumbnail"), async (req, res) => {
       course.progress = Number(req.body.progress);
 
     if (req.body.language !== undefined) {
-      course.language = parseLanguage(req.body.language);
+      course.language = req.body.language;
     }
 
     if (req.body.isPaid !== undefined) {
@@ -1727,7 +1727,7 @@ app.put("/api/session/:id", async (req, res) => {
     const updateData = { ...req.body };
 
     if (updateData.language) {
-      updateData.language = parseLanguage(updateData.language);
+      updateData.language = updateData.language;
     }
 
     const updatedSession = await LiveSession.findByIdAndUpdate(id, updateData, {
