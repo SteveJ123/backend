@@ -1872,6 +1872,7 @@ app.get("/api/tracker-status/:userId", async (req, res) => {
     if (user.completedPracticeDates.includes(todayStr)) {
       return res.json({
         success: true,
+        completedPracticeDates: user.completedPracticeDates,
         message: "Daily practice already completed for today.",
       });
     } else {
@@ -1923,6 +1924,49 @@ app.post("/api/complete-today", async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: Admin fetch users with points & tracker details by language
+app.get("/api/admin-users-tracker", async (req, res) => {
+  try {
+    const { language } = req.query;
+
+    let formattedLang;
+    if (language) {
+      const lower = language.toLowerCase();
+      if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
+      if (lower === "en" || lower === "english") formattedLang = "English";
+    }
+
+    const filter = {};
+    if (formattedLang) {
+      filter.language = formattedLang;
+    }
+
+    // Select fields required for admin list
+    const users = await User.find(filter)
+      .select("username name email points completedPracticeDates language role")
+      .sort({ points: -1 }); // Rank by highest points
+
+    const formattedData = users.map((u) => ({
+      _id: u._id,
+      name: u.name || u.username || "Student",
+      email: u.email,
+      points: u.points || 0,
+      language: u.language,
+      totalCompletedDays: u.completedPracticeDates
+        ? u.completedPracticeDates.length
+        : 0,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: formattedData.length,
+      data: formattedData,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 
