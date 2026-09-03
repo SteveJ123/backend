@@ -31,9 +31,17 @@ const SupportTeamSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    language: {
+      type: String,
+      required: true,
+      enum: ["English", "Telugu"],
+      index: true,
+    },
   },
   { timestamps: true },
 );
 
-const SupportTeam = mongoose.model("SupportTeam", SupportTeamSchema);
+const SupportTeam =
+  mongoose.models.SupportTeam ||
+  mongoose.model("SupportTeam", SupportTeamSchema);
 export default SupportTeam;

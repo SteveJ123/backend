@@ -3094,25 +3094,40 @@ app.get("/api/admin-comments/post/:postId", async (req, res) => {
   }
 });
 
-// GET all support team members
+// GET: Filter support team members by language
 app.get("/api/support-team", async (req, res) => {
   try {
-    const members = await SupportTeam.find().sort({ createdAt: -1 });
-    return res.status(200).json({ success: true, data: members });
+    const { language } = req.query;
+    const formattedLang = language;
+
+    const filter = {};
+    if (formattedLang) {
+      filter.language = formattedLang;
+    }
+
+    const members = await SupportTeam.find(filter).sort({ createdAt: -1 });
+    return res
+      .status(200)
+      .json({ success: true, count: members.length, data: members });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// POST create a new support team member
+// POST: Create a new support team member with language
 app.post("/api/support-team", async (req, res) => {
   try {
-    const { name, role, avatar, phone, email, available } = req.body;
-    if (!name || !role || !phone || !email) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Required fields missing." });
+    const { name, role, avatar, phone, email, available, language } = req.body;
+    const formattedLang = language;
+
+    if (!name || !role || !phone || !email || !formattedLang) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Required fields missing, including language ('English' or 'Telugu').",
+      });
     }
+
     const newMember = await SupportTeam.create({
       name,
       role,
@@ -3120,33 +3135,42 @@ app.post("/api/support-team", async (req, res) => {
       phone,
       email,
       available,
+      language: formattedLang,
     });
+
     return res.status(201).json({ success: true, data: newMember });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// PUT update a support team member
+// PUT: Update support team member
 app.put("/api/support-team/:id", async (req, res) => {
   try {
+    const updateData = { ...req.body };
+    if (updateData.language) {
+      updateData.language = updateData.language;
+    }
+
     const updatedMember = await SupportTeam.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
+      { $set: updateData },
       { new: true, runValidators: true },
     );
+
     if (!updatedMember) {
       return res
         .status(404)
         .json({ success: false, message: "Member not found." });
     }
+
     return res.status(200).json({ success: true, data: updatedMember });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// DELETE a support team member
+// DELETE: Remove support team member
 app.delete("/api/support-team/:id", async (req, res) => {
   try {
     const deletedMember = await SupportTeam.findByIdAndDelete(req.params.id);
