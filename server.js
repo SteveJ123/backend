@@ -2132,7 +2132,7 @@ app.delete("/api/support-team/:id", async (req, res) => {
 app.get("/api/personal-details/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
-    const language = parseLanguage(req.query.language);
+    const language = req.query.language;
 
     const details = await PersonalDetails.findOne({ userId, language });
 
