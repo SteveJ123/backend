@@ -196,6 +196,117 @@ router.delete("/:id", async (req, res) => {
 // -----------------------------------------------------------------------------
 // DELETE: Delete single lecture (/api/course/:id/lectures/:lectureId?language=Telugu)
 // -----------------------------------------------------------------------------
+// router.delete("/:id/lectures/:lectureId", async (req, res) => {
+//   try {
+//     const language = extractLanguage(req);
+//     const { id, lectureId } = req.params;
+
+//     const course = await Course.findOne({ _id: id, language });
+//     if (!course) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Course not found" });
+//     }
+
+//     const lecture = course.lectures.id(lectureId);
+//     if (lecture) {
+//       const filename = lecture.videoUrl.split("/uploads/videos/").pop();
+//       if (filename) {
+//         const filePath = path.join(
+//           process.cwd(),
+//           "uploads",
+//           "videos",
+//           filename,
+//         );
+//         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+//       }
+//     }
+
+//     const updatedCourse = await Course.findOneAndUpdate(
+//       { _id: id, language },
+//       { $pull: { lectures: { _id: lectureId } } },
+//       { returnDocument: "after" },
+//     );
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Lecture deleted successfully",
+//       data: updatedCourse,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// });
+
+// -----------------------------------------------------------------------------
+// PUT: Edit an existing lecture (Title and optional replacement video)
+// -----------------------------------------------------------------------------
+router.put(
+  "/:id/lectures/:lectureId",
+  upload.single("video"),
+  async (req, res) => {
+    try {
+      const language = extractLanguage(req);
+      const { id, lectureId } = req.params;
+      const { title } = req.body;
+
+      const course = await Course.findOne({ _id: id, language });
+      if (!course) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Course not found" });
+      }
+
+      const lecture = course.lectures.id(lectureId);
+      if (!lecture) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Lecture not found" });
+      }
+
+      // Build subdocument updates
+      const updateData = {};
+      if (title) updateData["lectures.$.title"] = title;
+
+      // Handle new video file replacement if uploaded
+      if (req.file) {
+        // Clean up old file from disk
+        if (lecture.videoUrl) {
+          const oldFilename = lecture.videoUrl.split("/uploads/videos/").pop();
+          if (oldFilename) {
+            const oldFilePath = path.join(
+              process.cwd(),
+              "uploads",
+              "videos",
+              oldFilename,
+            );
+            if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+          }
+        }
+        updateData["lectures.$.videoUrl"] =
+          `/uploads/videos/${req.file.filename}`;
+      }
+
+      const updatedCourse = await Course.findOneAndUpdate(
+        { _id: id, "lectures._id": lectureId, language },
+        { $set: updateData },
+        { returnDocument: "after", runValidators: true },
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Lecture updated successfully",
+        data: updatedCourse,
+      });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+);
+
+// -----------------------------------------------------------------------------
+// DELETE: Remove a specific lecture from a course
+// -----------------------------------------------------------------------------
 router.delete("/:id/lectures/:lectureId", async (req, res) => {
   try {
     const language = extractLanguage(req);
@@ -209,7 +320,7 @@ router.delete("/:id/lectures/:lectureId", async (req, res) => {
     }
 
     const lecture = course.lectures.id(lectureId);
-    if (lecture) {
+    if (lecture && lecture.videoUrl) {
       const filename = lecture.videoUrl.split("/uploads/videos/").pop();
       if (filename) {
         const filePath = path.join(
