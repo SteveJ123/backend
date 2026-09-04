@@ -1387,6 +1387,109 @@ app.post("/api/complete-today", async (req, res) => {
   }
 });
 
+// Helper to get date strings in YYYY-MM-DD
+function getFormattedDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+app.get("/api/leaderboard", async (req, res) => {
+  try {
+    const { lang } = req.query; // 'English' or 'Telugu'
+    const now = new Date();
+
+    // 1. Current Month Prefix (YYYY-MM)
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const currentMonthPrefix = `${year}-${month}`;
+
+    // 2. Current Week Bounds (Monday to Sunday)
+    const currentDayOfWeek = now.getDay(); // 0 is Sun, 1 is Mon...
+    const distanceToMon = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + distanceToMon);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    const startOfWeekStr = getFormattedDate(monday);
+    const endOfWeekStr = getFormattedDate(sunday);
+
+    // Base Filter for Language
+    const matchStage = lang ? { language: lang } : {};
+
+    const leaderboardData = await User.aggregate([
+      { $match: matchStage },
+      {
+        $project: {
+          username: 1,
+          language: 1,
+          points: 1,
+          completedPracticeDates: 1,
+
+          // Count entries in current month
+          monthlyCount: {
+            $size: {
+              $filter: {
+                input: { $ifNull: ["$completedPracticeDates", []] },
+                as: "dateStr",
+                cond: {
+                  $eq: [
+                    { $substrBytes: ["$$dateStr", 0, 7] },
+                    currentMonthPrefix,
+                  ],
+                },
+              },
+            },
+          },
+
+          // Count entries in current week
+          weeklyCount: {
+            $size: {
+              $filter: {
+                input: { $ifNull: ["$completedPracticeDates", []] },
+                as: "dateStr",
+                cond: {
+                  $and: [
+                    { $gte: ["$$dateStr", startOfWeekStr] },
+                    { $lte: ["$$dateStr", endOfWeekStr] },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        $facet: {
+          // Top 4 All-Time (Sorted by total points)
+          allTime: [{ $sort: { points: -1 } }, { $limit: 4 }],
+
+          // Top 4 Monthly (Sorted by current month completed days, then total points)
+          monthly: [{ $sort: { monthlyCount: -1, points: -1 } }, { $limit: 4 }],
+
+          // Top 4 Weekly (Sorted by current week completed days, then total points)
+          weekly: [{ $sort: { weeklyCount: -1, points: -1 } }, { $limit: 4 }],
+        },
+      },
+    ]);
+
+    const result = leaderboardData[0];
+
+    return res.json({
+      success: true,
+      allTime: result.allTime || [],
+      monthly: result.monthly || [],
+      weekly: result.weekly || [],
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // GET: Admin fetch users with points & tracker details by language
 app.get("/api/admin-users-tracker", async (req, res) => {
   try {
