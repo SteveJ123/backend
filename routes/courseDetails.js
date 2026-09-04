@@ -1,35 +1,97 @@
 import express from "express";
 import fs from "fs";
-import Course from "../models/te/Course.js";
+import path from "path";
+import Course from "../models/Course.js";
 import upload from "../middleware/uploadLecture.js";
 
 const router = express.Router();
 
-// Ensure 'uploads/videos' directory exists on app startup
+// Helper to extract & normalize language from query, body, or headers
+const extractLanguage = (req) => {
+  const input =
+    req.query.language ||
+    req.body.language ||
+    req.headers["x-language"] ||
+    "English";
+
+  const lower = String(input).trim().toLowerCase();
+  if (lower === "te" || lower === "telugu") return "Telugu";
+  return "English";
+};
+
+// Ensure upload directory exists
 if (!fs.existsSync("./uploads/videos")) {
   fs.mkdirSync("./uploads/videos", { recursive: true });
 }
 
-// GET: Fetch details and lectures for a specific course
+// -----------------------------------------------------------------------------
+// GET: Fetch all courses by language (/api/course?language=Telugu)
+// -----------------------------------------------------------------------------
+router.get("/", async (req, res) => {
+  try {
+    const { language } = req.body;
+    const courses = await Course.find({ language });
+
+    return res.status(200).json({ success: true, data: courses });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// GET: Fetch single course by ID & language (/api/course/:id?language=English)
+// -----------------------------------------------------------------------------
 router.get("/:id", async (req, res) => {
   try {
-    const course = await Course.findById(req.params.id);
+    console.log("req params", req.params);
+    console.log("req body", req.body);
+    const language = extractLanguage(req);
+    const course = await Course.findOne({ _id: req.params.id, language });
+
     if (!course) {
       return res
         .status(404)
         .json({ success: false, message: "Course not found" });
     }
 
-    res.status(200).json({ success: true, data: course });
+    return res.status(200).json({ success: true, data: course });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// POST: Admin upload a video file and attach the lecture to the course
+// -----------------------------------------------------------------------------
+// POST: Create a new course (/api/course)
+// -----------------------------------------------------------------------------
+router.post("/", async (req, res) => {
+  try {
+    const language = extractLanguage(req);
+    const { title, description, instructor, thumbnail, isPaid, isNewCourse } =
+      req.body;
+
+    const course = await Course.create({
+      title,
+      description,
+      instructor,
+      thumbnail,
+      isPaid,
+      isNewCourse,
+      language,
+    });
+
+    return res.status(201).json({ success: true, data: course });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// POST: Add video lecture (/api/course/:id/lectures?language=Telugu)
+// -----------------------------------------------------------------------------
 router.post("/:id/lectures", upload.single("video"), async (req, res) => {
   try {
-    const { title, duration } = req.body;
+    const language = extractLanguage(req);
+    const { title } = req.body;
 
     if (!req.file) {
       return res
@@ -37,21 +99,12 @@ router.post("/:id/lectures", upload.single("video"), async (req, res) => {
         .json({ success: false, message: "No video file provided" });
     }
 
-    // Relative web URL stored in the DB
     const videoUrl = `/uploads/videos/${req.file.filename}`;
 
-    // Append lecture to array using $push
-    const updatedCourse = await Course.findByIdAndUpdate(
-      req.params.id,
-      {
-        $push: {
-          lectures: {
-            title,
-            videoUrl,
-          },
-        },
-      },
-      { new: true, runValidators: true },
+    const updatedCourse = await Course.findOneAndUpdate(
+      { _id: req.params.id, language },
+      { $push: { lectures: { title, videoUrl } } },
+      { returnDocument: "after", runValidators: true },
     );
 
     if (!updatedCourse) {
@@ -60,14 +113,128 @@ router.post("/:id/lectures", upload.single("video"), async (req, res) => {
         .json({ success: false, message: "Course not found" });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Video lecture uploaded successfully",
+      message: "Lecture uploaded successfully",
       data: updatedCourse,
     });
   } catch (error) {
-    console.error("Upload Error:", error);
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// PUT: Update course details (/api/course/:id?language=Telugu)
+// -----------------------------------------------------------------------------
+router.put("/:id", async (req, res) => {
+  try {
+    const language = extractLanguage(req);
+
+    const updatedCourse = await Course.findOneAndUpdate(
+      { _id: req.params.id, language },
+      { $set: { ...req.body, language } },
+      { returnDocument: "after", runValidators: true },
+    );
+
+    if (!updatedCourse) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Course not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Course updated successfully",
+      data: updatedCourse,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// DELETE: Delete course (/api/course/:id?language=Telugu)
+// -----------------------------------------------------------------------------
+router.delete("/:id", async (req, res) => {
+  try {
+    const language = extractLanguage(req);
+    const course = await Course.findOneAndDelete({
+      _id: req.params.id,
+      language,
+    });
+
+    if (!course) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Course not found" });
+    }
+
+    // Clean up physical video files
+    if (course.lectures?.length > 0) {
+      course.lectures.forEach((lecture) => {
+        const filename = lecture.videoUrl.split("/uploads/videos/").pop();
+        if (filename) {
+          const filePath = path.join(
+            process.cwd(),
+            "uploads",
+            "videos",
+            filename,
+          );
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        }
+      });
+    }
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Course deleted successfully" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// DELETE: Delete single lecture (/api/course/:id/lectures/:lectureId?language=Telugu)
+// -----------------------------------------------------------------------------
+router.delete("/:id/lectures/:lectureId", async (req, res) => {
+  try {
+    const language = extractLanguage(req);
+    const { id, lectureId } = req.params;
+
+    const course = await Course.findOne({ _id: id, language });
+    if (!course) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Course not found" });
+    }
+
+    const lecture = course.lectures.id(lectureId);
+    if (lecture) {
+      const filename = lecture.videoUrl.split("/uploads/videos/").pop();
+      if (filename) {
+        const filePath = path.join(
+          process.cwd(),
+          "uploads",
+          "videos",
+          filename,
+        );
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      }
+    }
+
+    const updatedCourse = await Course.findOneAndUpdate(
+      { _id: id, language },
+      { $pull: { lectures: { _id: lectureId } } },
+      { returnDocument: "after" },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Lecture deleted successfully",
+      data: updatedCourse,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 

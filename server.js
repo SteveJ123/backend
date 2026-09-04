@@ -397,133 +397,6 @@ app.post("/api/posts", upload.array("files"), async (req, res) => {
   }
 });
 
-// app.get("/api/posts", async (req, res) => {
-//   try {
-//     const posts = await Post.aggregate([
-//       // 1. Join with 'register' collection using userId
-//       {
-//         $lookup: {
-//           from: "register", // Explicitly matches your User model's collection name
-//           localField: "userId",
-//           foreignField: "_id",
-//           as: "authorDetails",
-//         },
-//       },
-//       // 2. Flatten authorDetails array to a single object
-//       {
-//         $unwind: {
-//           path: "$authorDetails",
-//           preserveNullAndEmptyArrays: true, // Retain post if user is missing
-//         },
-//       },
-//       // 3. Join with comments collection for comment count
-//       {
-//         $lookup: {
-//           from: "comments",
-//           localField: "_id",
-//           foreignField: "postId",
-//           as: "allComments",
-//         },
-//       },
-//       // 4. Reshape userId with User schema fields and calculate comment count
-//       {
-//         $addFields: {
-//           commentCount: { $size: "$allComments" },
-//           userId: {
-//             _id: "$authorDetails._id",
-//             username: "$authorDetails.username",
-//             mobile: "$authorDetails.mobile",
-//             role: "$authorDetails.role",
-//             courseType: "$authorDetails.courseType",
-//             language: "$authorDetails.language",
-//           },
-//         },
-//       },
-//       // 5. Cleanup temporary arrays
-//       {
-//         $project: {
-//           allComments: 0,
-//           authorDetails: 0,
-//         },
-//       },
-//       { $sort: { createdAt: -1 } },
-//     ]);
-
-//     return res.status(200).json({ success: true, data: posts });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
-
-// app.get("/api/posts", async (req, res) => {
-//   try {
-//     const { language } = req.query;
-
-//     // Convert query param (e.g. 'english' or 'te') to exact DB casing ('English' / 'Telugu')
-//     let formattedLang;
-//     if (language) {
-//       const lower = language.toLowerCase();
-//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
-//       if (lower === "en" || lower === "english") formattedLang = "English";
-//     }
-
-//     const posts = await Post.aggregate([
-//       {
-//         $lookup: {
-//           from: "register",
-//           localField: "userId",
-//           foreignField: "_id",
-//           as: "authorDetails",
-//         },
-//       },
-//       {
-//         $unwind: {
-//           path: "$authorDetails",
-//           preserveNullAndEmptyArrays: true,
-//         },
-//       },
-
-//       // Match by exact language casing if specified
-//       ...(formattedLang
-//         ? [{ $match: { "authorDetails.language": formattedLang } }]
-//         : []),
-
-//       {
-//         $lookup: {
-//           from: "comments",
-//           localField: "_id",
-//           foreignField: "postId",
-//           as: "allComments",
-//         },
-//       },
-//       {
-//         $addFields: {
-//           commentCount: { $size: "$allComments" },
-//           userId: {
-//             _id: "$authorDetails._id",
-//             username: "$authorDetails.username",
-//             mobile: "$authorDetails.mobile",
-//             role: "$authorDetails.role",
-//             courseType: "$authorDetails.courseType",
-//             language: "$authorDetails.language",
-//           },
-//         },
-//       },
-//       {
-//         $project: {
-//           allComments: 0,
-//           authorDetails: 0,
-//         },
-//       },
-//       { $sort: { createdAt: -1 } },
-//     ]);
-
-//     return res.status(200).json({ success: true, data: posts });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
-
 app.get("/api/posts", async (req, res) => {
   try {
     const { language } = req.query;
@@ -831,199 +704,6 @@ app.patch("/api/posts/:postId/like", async (req, res) => {
   }
 });
 
-// ==========================================
-// 1. POST ROUTE: Create Course with Image Upload
-// ==========================================
-// app.post("/api/courses", upload.single("thumbnail"), async (req, res) => {
-//   try {
-//     if (!req.file) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Thumbnail image file is required.",
-//       });
-//     }
-
-//     // Construct the image URL accessible via express.static('/uploads')
-//     const thumbnailUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
-
-//     const newCourse = new Course({
-//       title: req.body.title,
-//       description: req.body.description,
-//       instructor: req.body.instructor || "Pooja Agarwala",
-//       thumbnail: thumbnailUrl,
-//       // sectionsCount: Number(req.body.sectionsCount) || 1,
-//       // lecturesCount: Number(req.body.lecturesCount) || 1,
-//       isPaid: req.body.isPaid === "true",
-//       isNewCourse: req.body.isNewCourse === "true",
-//       // membershipType: req.body.membershipType || "Standard",
-//       progress: 0,
-//       status: "not_started",
-//     });
-
-//     const savedCourse = await newCourse.save();
-
-//     return res.status(201).json({
-//       success: true,
-//       message: "Course created successfully",
-//       data: savedCourse,
-//     });
-//   } catch (error) {
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message || "Server error while creating course",
-//     });
-//   }
-// });
-
-// // -----------------------------------------------------------------------------
-// // PUT: Update an existing Course (handles optional new thumbnail upload)
-// // -----------------------------------------------------------------------------
-// app.put("/api/courses/:id", upload.single("thumbnail"), async (req, res) => {
-//   try {
-//     const course = await Course.findById(req.params.id);
-
-//     if (!course) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Course not found",
-//       });
-//     }
-
-//     // 1. Update text fields if provided in request body
-//     if (req.body.title !== undefined) course.title = req.body.title;
-//     if (req.body.description !== undefined)
-//       course.description = req.body.description;
-//     if (req.body.instructor !== undefined)
-//       course.instructor = req.body.instructor;
-//     if (req.body.status !== undefined) course.status = req.body.status;
-//     if (req.body.progress !== undefined)
-//       course.progress = Number(req.body.progress);
-
-//     // 2. Parse boolean values (handles string representations from FormData)
-//     if (req.body.isPaid !== undefined) {
-//       course.isPaid = req.body.isPaid === "true" || req.body.isPaid === true;
-//     }
-//     if (req.body.isNewCourse !== undefined) {
-//       course.isNewCourse =
-//         req.body.isNewCourse === "true" || req.body.isNewCourse === true;
-//     }
-
-//     // 3. Replace thumbnail if a new file is uploaded
-//     if (req.file) {
-//       // Unlink existing thumbnail file from disk if present
-//       if (course.thumbnail) {
-//         const oldFileName = course.thumbnail.split("/uploads/").pop();
-//         if (oldFileName) {
-//           const oldFilePath = path.join(process.cwd(), "uploads", oldFileName);
-//           if (fs.existsSync(oldFilePath)) {
-//             fs.unlinkSync(oldFilePath);
-//           }
-//         }
-//       }
-
-//       // Assign new uploaded thumbnail URL
-//       course.thumbnail = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
-//     }
-
-//     const updatedCourse = await course.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Course updated successfully",
-//       data: updatedCourse,
-//     });
-//   } catch (error) {
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message || "Server error while updating course",
-//     });
-//   }
-// });
-
-// // -----------------------------------------------------------------------------
-// // DELETE: Remove a Course & delete its thumbnail from storage
-// // -----------------------------------------------------------------------------
-// app.delete("/api/courses/:id", async (req, res) => {
-//   try {
-//     const course = await Course.findById(req.params.id);
-
-//     if (!course) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Course not found",
-//       });
-//     }
-
-//     // 1. Delete thumbnail file from disk
-//     if (course.thumbnail) {
-//       const fileName = course.thumbnail.split("/uploads/").pop();
-//       if (fileName) {
-//         const filePath = path.join(process.cwd(), "uploads", fileName);
-//         if (fs.existsSync(filePath)) {
-//           fs.unlinkSync(filePath);
-//         }
-//       }
-//     }
-
-//     // 2. Delete database document
-//     await Course.findByIdAndDelete(req.params.id);
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Course and thumbnail deleted successfully",
-//     });
-//   } catch (error) {
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message || "Server error while deleting course",
-//     });
-//   }
-// });
-
-// app.get("/api/courses", async (req, res) => {
-//   try {
-//     const { courseType, role } = req.query;
-//     // If using JWT middleware: const role = req.user?.role;
-
-//     let filterQuery = {};
-
-//     // Check if user is NOT an admin
-//     if (role !== "admin") {
-//       // Safely check if courseType is undefined, null, or empty string
-//       if (!courseType || typeof courseType !== "string" || !courseType.trim()) {
-//         return res.status(200).json({
-//           success: true,
-//           count: 0,
-//           data: [],
-//         });
-//       }
-
-//       // Escape special regex characters safely
-//       const escapedCourseType = courseType
-//         .trim()
-//         .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-//       filterQuery = {
-//         title: { $regex: `^${escapedCourseType}$`, $options: "i" },
-//       };
-//     }
-//     // If role === "admin", filterQuery remains {} to fetch all records regardless of courseType being undefined
-
-//     const courses = await Course.find(filterQuery).sort({ createdAt: -1 });
-
-//     return res.status(200).json({
-//       success: true,
-//       count: courses.length,
-//       data: courses,
-//     });
-//   } catch (error) {
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message || "Server error while fetching courses",
-//     });
-//   }
-// });
-
 // GET: Filter courses by language & courseType enrollment
 app.get("/api/courses", async (req, res) => {
   try {
@@ -1221,74 +901,6 @@ app.delete("/api/courses/:id", async (req, res) => {
   }
 });
 
-// GET: Fetch Personal Details
-app.get("/api/personal-details/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-
-    // Find personal details for the specific user
-    let details = await PersonalDetails.findOne({ userId });
-
-    // If no details exist yet for this user, create default record
-    if (!details) {
-      details = await PersonalDetails.create({
-        userId,
-        name: "Legala Manjula",
-        gender: "Female",
-      });
-    }
-
-    return res.status(200).json({ success: true, data: details });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-app.post("/api/personal-details/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const { name, aboutYou, gender, birthday, profileImage } = req.body;
-
-    // Create the document for the first time
-    const newDetails = await PersonalDetails.create({
-      userId,
-      name,
-      aboutYou,
-      gender,
-      birthday,
-      profileImage,
-    });
-
-    return res.status(201).json({ success: true, data: newDetails });
-  } catch (error) {
-    // If a document for this userId already exists, this will throw a duplicate key error
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// POST: Save/Update Personal Details
-app.put("/api/personal-details/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const { name, aboutYou, gender, birthday } = req.body;
-
-    // Find and update personal details, creating a new document if it doesn't exist (upsert)
-    const updatedDetails = await PersonalDetails.findOneAndUpdate(
-      { userId },
-      { name, aboutYou, gender, birthday },
-      { new: true, runValidators: true, upsert: true },
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: "Personal details updated successfully",
-      data: updatedDetails,
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
 app.get("/api/notifications", async (req, res) => {
   try {
     const { userId } = req.query;
@@ -1462,141 +1074,6 @@ app.delete("/api/posts/:id", async (req, res) => {
     return res.status(500).json({ success: false, error: error.message });
   }
 });
-
-// GET: Fetch all scheduled live sessions grouped or sorted by date
-// app.get("/api/session", async (req, res) => {
-//   try {
-//     const { role, courseType } = req.query;
-//     let query = {};
-
-//     // Filter sessions based on role and courseType
-//     if (role === "user") {
-//       if (courseType === "Face Yoga") {
-//         // "Face Yoga" users ONLY see "Face Yoga" sessions
-//         query.courseType = "Face Yoga";
-//       } else if (courseType === "Face Yoga + Raj Yoga") {
-//         // "Face Yoga + Raj Yoga" users see BOTH session types
-//         query.courseType = { $in: ["Face Yoga", "Face Yoga + Raj Yoga"] };
-//       }
-//     }
-//     // Note: If role === "admin" or role is undefined, query remains {} to return ALL sessions
-
-//     const sessions = await LiveSession.find(query).sort({ createdAt: -1 });
-//     return res.status(200).json({ success: true, data: sessions });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
-
-// POST: Admin create new live session
-// app.post("/api/session", async (req, res) => {
-//   try {
-//     const {
-//       title,
-//       date,
-//       startTime,
-//       endTime,
-//       occurrence,
-//       linkTypeNote,
-//       meetingUrl,
-//       courseType,
-//     } = req.body;
-
-//     if (
-//       !title ||
-//       !date ||
-//       !startTime ||
-//       !endTime ||
-//       !meetingUrl ||
-//       !courseType
-//     ) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Missing required fields." });
-//     }
-
-//     const newSession = new LiveSession({
-//       title,
-//       date,
-//       startTime,
-//       endTime,
-//       occurrence,
-//       linkTypeNote,
-//       meetingUrl,
-//       courseType,
-//     });
-
-//     const savedSession = await newSession.save();
-//     return res.status(201).json({ success: true, data: savedSession });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
-
-// // PUT: Admin update an existing live session
-// app.put("/api/session/:id", async (req, res) => {
-//   try {
-//     const {
-//       title,
-//       date,
-//       startTime,
-//       endTime,
-//       occurrence,
-//       linkTypeNote,
-//       meetingUrl,
-//       courseType,
-//     } = req.body;
-
-//     const updatedSession = await LiveSession.findByIdAndUpdate(
-//       req.params.id,
-//       {
-//         $set: {
-//           ...(title && { title }),
-//           ...(date && { date }),
-//           ...(startTime && { startTime }),
-//           ...(endTime && { endTime }),
-//           ...(occurrence !== undefined && { occurrence }),
-//           ...(linkTypeNote !== undefined && { linkTypeNote }),
-//           ...(meetingUrl && { meetingUrl }),
-//           ...(courseType && { courseType }),
-//         },
-//       },
-//       { new: true, runValidators: true },
-//     );
-
-//     if (!updatedSession) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Live session not found." });
-//     }
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Live session updated successfully",
-//       data: updatedSession,
-//     });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
-
-// // DELETE: Admin remove a session (fixed route prefix to /api/session/:id)
-// app.delete("/api/session/:id", async (req, res) => {
-//   try {
-//     const deletedSession = await LiveSession.findByIdAndDelete(req.params.id);
-
-//     if (!deletedSession) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Live session not found." });
-//     }
-
-//     return res.status(200).json({ success: true, message: "Session deleted" });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
-
 // CREATE SESSION
 app.post("/api/session", async (req, res) => {
   try {
@@ -1646,23 +1123,6 @@ app.post("/api/session", async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
-
-// GET SESSIONS (Filtered by Language)
-// app.get("/api/session", async (req, res) => {
-//   try {
-//     const { language, courseType } = req.query;
-//     const formattedLang = language;
-
-//     const filter = {};
-//     if (formattedLang) filter.language = formattedLang;
-//     if (courseType) filter.courseType = courseType;
-
-//     const sessions = await LiveSession.find(filter).sort({ createdAt: -1 });
-//     return res.status(200).json({ success: true, data: sessions });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
 
 app.get("/api/session", async (req, res) => {
   try {
@@ -1970,215 +1430,6 @@ app.get("/api/admin-users-tracker", async (req, res) => {
   }
 });
 
-// POST endpoint: Creates document on first upload or updates it if it exists
-app.post(
-  "/api/personal-details/:userId/profile-image",
-  upload.single("image"),
-  async (req, res) => {
-    try {
-      const { userId } = req.params;
-
-      if (!req.file) {
-        return res
-          .status(400)
-          .json({ success: false, message: "No image file provided" });
-      }
-
-      const imagePath = `/uploads/${req.file.filename}`;
-
-      // findOneAndUpdate + upsert creates a new document if it doesn't exist yet
-      const details = await PersonalDetails.findOneAndUpdate(
-        { userId },
-        { $set: { profileImage: imagePath } },
-        { new: true, upsert: true, runValidators: true },
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: "Profile image saved successfully",
-        data: details,
-      });
-    } catch (error) {
-      return res.status(500).json({ success: false, message: error.message });
-    }
-  },
-);
-
-// Upload Profile Image Endpoint
-app.put(
-  "/api/personal-details/:userId/profile-image",
-  upload.single("image"),
-  async (req, res) => {
-    try {
-      const { userId } = req.params;
-
-      if (!req.file) {
-        return res
-          .status(400)
-          .json({ success: false, message: "No image file provided" });
-      }
-
-      // Construct file access path (or use upload service URL)
-      const imagePath = `/uploads/${req.file.filename}`;
-
-      // Update or create document using $set
-      const updatedDetails = await PersonalDetails.findOneAndUpdate(
-        { userId },
-        { $set: { profileImage: imagePath } },
-        { new: true, upsert: true },
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: "Profile image updated successfully",
-        data: updatedDetails,
-      });
-    } catch (error) {
-      return res.status(500).json({ success: false, message: error.message });
-    }
-  },
-);
-
-// DELETE Profile Image Endpoint
-app.delete("/api/personal-details/:userId/profile-image", async (req, res) => {
-  try {
-    const { userId } = req.params;
-
-    // 1. Find user's current record
-    const details = await PersonalDetails.findOne({ userId });
-
-    if (!details || !details.profileImage) {
-      return res
-        .status(400)
-        .json({ success: false, message: "No profile image to delete" });
-    }
-
-    // 2. Delete file from physical disk storage
-    const filePath = path.join(__dirname, "..", details.profileImage);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-
-    // 3. Clear profileImage string in MongoDB
-    details.profileImage = "";
-    await details.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Profile image deleted successfully",
-      data: details,
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
-//   try {
-//     const { userId, content, tagIds, fileTypes } = req.body;
-
-//     if (!userId) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "userId is required to create a post.",
-//       });
-//     }
-
-//     if (!mongoose.Types.ObjectId.isValid(userId)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid userId format provided.",
-//       });
-//     }
-
-//     const allUsers = await User.find({});
-//     console.log("=== ALL USERS IN DATABASE ===");
-//     console.log(
-//       allUsers.map((u) => ({
-//         id: u._id.toString(),
-//         role: u.role,
-//         username: u.username,
-//       })),
-//     );
-//     console.log("Incoming userId from request:", userId);
-//     console.log("===============================");
-//     // 1. Fetch the actual user from MongoDB to get accurate role & courseType
-//     let author = await User.findById(userId);
-//     if (!author) {
-//       author = await User.findOne({ role: "admin" });
-//     }
-//     if (!author) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Post author not found in database.",
-//       });
-//     }
-
-//     // Parse JSON strings sent from Angular FormData
-//     const parsedTagIds = tagIds ? JSON.parse(tagIds) : [];
-
-//     // Normalize fileTypes array
-//     const typesArray = Array.isArray(fileTypes)
-//       ? fileTypes
-//       : fileTypes
-//         ? [fileTypes]
-//         : [];
-
-//     const mediaFiles = (req.files || []).map((file, index) => ({
-//       filename: file.filename,
-//       path: file.path,
-//       mimetype: file.mimetype,
-//       mediaType: typesArray[index] || "file",
-//     }));
-
-//     // 2. Create the post using the author's database courseType
-//     const newPost = new AdminPost({
-//       userId,
-//       content,
-//       tagIds: parsedTagIds,
-//       courseType: author.courseType,
-//       mediaFiles,
-//     });
-
-//     await newPost.save();
-
-//     // 3. Build target recipients query to match EVERY user in the collection except the post author
-//     const targetUsers = await User.find({
-//       _id: { $ne: author._id },
-//     }).select("_id");
-
-//     console.log(`Author ID: ${author._id}`);
-//     console.log(`Target Recipients Count: ${targetUsers.length}`);
-
-//     // 4. Bulk insert notification records for all recipients
-//     if (targetUsers.length > 0) {
-//       const notifications = targetUsers.map((user) => ({
-//         recipient: user._id,
-//         sender: author._id,
-//         postId: newPost._id,
-//         postModel: "AdminPost", // <--- Dynamic model reference
-//         postContentSnippet: content ? content.trim() : "Uploaded media post.",
-//         isRead: false,
-//       }));
-
-//       await Notification.insertMany(notifications);
-//     }
-
-//     return res.status(201).json({
-//       success: true,
-//       message: "Post created and notifications queued successfully.",
-//       data: newPost,
-//     });
-//   } catch (error) {
-//     console.error("Error creating post:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server Error",
-//       error: error.message,
-//     });
-//   }
-// });
-
 app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
   try {
     const { userId, content, tagIds, fileTypes, targetLanguage } = req.body;
@@ -2286,85 +1537,6 @@ app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
   }
 });
 
-// app.get("/api/admin-posts", async (req, res) => {
-//   try {
-//     const posts = await AdminPost.aggregate([
-//       // 1. Match post._id (ObjectId) directly with comment.postId (ObjectId)
-//       {
-//         $lookup: {
-//           from: "comments",
-//           localField: "_id",
-//           foreignField: "postId",
-//           as: "allComments",
-//         },
-//       },
-//       // 2. Add total comment count field
-//       {
-//         $addFields: {
-//           commentCount: { $size: "$allComments" },
-//         },
-//       },
-//       // 3. Remove raw allComments array to keep the post response lightweight
-//       {
-//         $project: {
-//           allComments: 0,
-//         },
-//       },
-//       { $sort: { createdAt: -1 } },
-//     ]);
-
-//     return res.status(200).json({ success: true, data: posts });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
-
-// app.get("/api/admin-posts", async (req, res) => {
-//   try {
-//     const { language } = req.query;
-
-//     // Convert route param (e.g. 'te' or 'en') to match DB casing ('Telugu' / 'English')
-//     let formattedLang;
-//     if (language) {
-//       const lower = language.toLowerCase();
-//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
-//       if (lower === "en" || lower === "english") formattedLang = "English";
-//     }
-
-//     const posts = await AdminPost.aggregate([
-//       // 1. Filter by language if provided
-//       ...(formattedLang ? [{ $match: { language: formattedLang } }] : []),
-
-//       // 2. Join with comments
-//       {
-//         $lookup: {
-//           from: "admincomments",
-//           localField: "_id",
-//           foreignField: "postId",
-//           as: "allComments",
-//         },
-//       },
-//       // 3. Add comment count
-//       {
-//         $addFields: {
-//           commentCount: { $size: "$allComments" },
-//         },
-//       },
-//       // 4. Cleanup and sort
-//       {
-//         $project: {
-//           allComments: 0,
-//         },
-//       },
-//       { $sort: { createdAt: -1 } },
-//     ]);
-
-//     return res.status(200).json({ success: true, data: posts });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
-
 app.get("/api/admin-posts", async (req, res) => {
   try {
     const { language } = req.query;
@@ -2450,64 +1622,6 @@ app.get("/api/admin-posts", async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
-
-// GET /api/posts/user/:userId
-// app.get("/api/admin-posts/admin/:adminId", async (req, res) => {
-//   try {
-//     const { adminId } = req.params;
-
-//     // Validate if the userId string is a valid MongoDB ObjectId
-//     if (!mongoose.Types.ObjectId.isValid(adminId)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid user ID format",
-//       });
-//     }
-
-//     const posts = await AdminPost.aggregate([
-//       // 1. Filter posts matching the specific userId
-//       {
-//         $match: {
-//           userId: new mongoose.Types.ObjectId(userId),
-//         },
-//       },
-//       // 2. Join comments from the "comments" collection where post._id matches comment.postId
-//       {
-//         $lookup: {
-//           from: "comments",
-//           localField: "_id",
-//           foreignField: "postId",
-//           as: "allComments",
-//         },
-//       },
-//       // 3. Add total comment count field
-//       {
-//         $addFields: {
-//           commentCount: { $size: "$allComments" },
-//         },
-//       },
-//       // 4. Remove raw allComments array to keep the payload lightweight
-//       {
-//         $project: {
-//           allComments: 0,
-//         },
-//       },
-//       // 5. Sort posts from newest to oldest
-//       { $sort: { createdAt: -1 } },
-//     ]);
-
-//     return res.status(200).json({
-//       success: true,
-//       count: posts.length,
-//       data: posts,
-//     });
-//   } catch (error) {
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message,
-//     });
-//   }
-// });
 
 app.get("/api/admin-posts/admin/:adminId", async (req, res) => {
   try {
@@ -2703,71 +1817,6 @@ app.patch("/api/admin-posts/:postId/like", async (req, res) => {
   }
 });
 
-// UPDATE POST & MEDIA FILES
-// app.put("/api/admin-posts/:id", upload.array("newFiles"), async (req, res) => {
-//   try {
-//     // 1. Extract userId from req.body (or from req.user if using auth middleware)
-//     const { content, userId, removedMediaIds } = req.body;
-//     const post = await AdminPost.findById(req.params.id);
-
-//     if (!post) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Post not found" });
-//     }
-
-//     // 2. Normalize and compare post.userId with incoming userId
-//     const postUserId = post.userId ? post.userId.toString() : "";
-//     const incomingUserId = userId ? userId.toString() : "";
-
-//     if (!incomingUserId || postUserId !== incomingUserId) {
-//       return res
-//         .status(403)
-//         .json({ success: false, message: "Unauthorized action" });
-//     }
-
-//     // 3. Update text content
-//     if (content !== undefined) post.content = content;
-
-//     // 4. Remove specified media files from disk & database
-//     if (removedMediaIds) {
-//       const idsToDelete = Array.isArray(removedMediaIds)
-//         ? removedMediaIds
-//         : [removedMediaIds];
-
-//       post.mediaFiles = post.mediaFiles.filter((file) => {
-//         if (idsToDelete.includes(file._id.toString())) {
-//           // Delete file physically from disk
-//           const filePath = path.join(process.cwd(), file.path);
-//           if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-//           return false;
-//         }
-//         return true;
-//       });
-//     }
-
-//     // 5. Append newly uploaded media files
-//     if (req.files && req.files.length > 0) {
-//       const uploadedMedia = req.files.map((file) => ({
-//         filename: file.originalname,
-//         path: file.path,
-//         mimetype: file.mimetype,
-//         mediaType: file.mimetype.startsWith("image/")
-//           ? "image"
-//           : file.mimetype.startsWith("video/")
-//             ? "video"
-//             : "audio",
-//       }));
-//       post.mediaFiles.push(...uploadedMedia);
-//     }
-
-//     const updatedPost = await post.save();
-//     return res.status(200).json({ success: true, data: updatedPost });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, error: error.message });
-//   }
-// });
-
 app.put("/api/admin-posts/:id", upload.array("newFiles"), async (req, res) => {
   try {
     const { content, userId, removedMediaIds, targetLanguage, language } =
@@ -2848,46 +1897,6 @@ app.put("/api/admin-posts/:id", upload.array("newFiles"), async (req, res) => {
   }
 });
 
-// DELETE POST & ALL ASSOCIATED MEDIA
-// app.delete("/api/admin-posts/:id", async (req, res) => {
-//   try {
-//     // Read userId from query params (handles both req.query.userId and req.query.userid)
-//     const userId = req.query.userid;
-//     const post = await AdminPost.findById(req.params.id);
-
-//     if (!post) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Post not found" });
-//     }
-
-//     // Compare string representations of the user IDs
-//     const postUserId = post.userId ? post.userId.toString() : "";
-//     const incomingUserId = userId ? userId.toString() : "";
-
-//     if (!incomingUserId || postUserId !== incomingUserId) {
-//       return res
-//         .status(403)
-//         .json({ success: false, message: "Unauthorized action" });
-//     }
-
-//     // Delete attached media files from disk
-//     if (post.mediaFiles && post.mediaFiles.length > 0) {
-//       post.mediaFiles.forEach((file) => {
-//         const filePath = path.join(process.cwd(), file.path);
-//         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-//       });
-//     }
-
-//     await AdminPost.findByIdAndDelete(req.params.id);
-//     return res
-//       .status(200)
-//       .json({ success: true, message: "Post and media deleted" });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, error: error.message });
-//   }
-// });
-
 app.delete("/api/admin-posts/:id", async (req, res) => {
   try {
     // Read userId flexibly regardless of casing
@@ -2947,75 +1956,6 @@ app.delete("/api/admin-posts/:id", async (req, res) => {
   }
 });
 
-// // POST /api/comments
-// app.post("/api/admin-comments", async (req, res) => {
-//   try {
-//     const { postId, userId, content, parentId, username } = req.body;
-
-//     if (!postId || !userId || !content || !content.trim() || !username.trim()) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "postId, userId, and content are required fields.",
-//       });
-//     }
-
-//     const newComment = await AdminComment.create({
-//       postId,
-//       userId,
-//       username,
-//       content: content.trim(),
-//       parentId: parentId || null,
-//     });
-
-//     return res.status(201).json(newComment);
-//   } catch (error) {
-//     return res
-//       .status(500)
-//       .json({ message: "Error submitting comment", error: error.message });
-//   }
-// });
-
-// // GET /api/comments/post/:postId
-// app.get("/api/admin-comments/post/:postId", async (req, res) => {
-//   try {
-//     const { postId } = req.params;
-
-//     // Fetch all comments belonging to the post
-//     const postComments = await AdminComment.find({ postId })
-//       .sort({ createdAt: -1 })
-//       .lean();
-
-//     const totalCount = postComments.length;
-//     const parentComments = [];
-//     const repliesMap = {};
-
-//     postComments.forEach((c) => {
-//       if (!c.parentId) {
-//         parentComments.push({ ...c, replies: [] });
-//       } else {
-//         const pId = c.parentId.toString();
-//         if (!repliesMap[pId]) repliesMap[pId] = [];
-//         repliesMap[pId].push(c);
-//       }
-//     });
-
-//     const structuredComments = parentComments.map((parent) => ({
-//       ...parent,
-//       replies: repliesMap[parent._id.toString()] || [],
-//     }));
-
-//     return res.status(200).json({
-//       success: true,
-//       totalCount,
-//       comments: structuredComments,
-//     });
-//   } catch (error) {
-//     return res
-//       .status(500)
-//       .json({ message: "Error fetching comments", error: error.message });
-//   }
-// });
-
 // POST /api/admin-comments
 app.post("/api/admin-comments", async (req, res) => {
   try {
@@ -3046,51 +1986,6 @@ app.post("/api/admin-comments", async (req, res) => {
     });
   }
 });
-
-// GET /api/admin-comments/post/:postId
-// app.get("/api/admin-comments/post/:postId", async (req, res) => {
-//   try {
-//     const { postId } = req.params;
-
-//     // Fetch all comments (chronological order for replies)
-//     const postComments = await AdminComment.find({ postId })
-//       .sort({ createdAt: 1 })
-//       .lean();
-
-//     const parentComments = [];
-//     const repliesMap = {};
-
-//     postComments.forEach((c) => {
-//       if (!c.parentId) {
-//         parentComments.push({ ...c, replies: [] });
-//       } else {
-//         const pId = c.parentId.toString();
-//         if (!repliesMap[pId]) repliesMap[pId] = [];
-//         repliesMap[pId].push(c);
-//       }
-//     });
-
-//     // Nest replies inside corresponding parent items
-//     const structuredComments = parentComments
-//       .map((parent) => ({
-//         ...parent,
-//         replies: repliesMap[parent._id.toString()] || [],
-//       }))
-//       .reverse(); // Reverse parents to show newest first
-
-//     return res.status(200).json({
-//       success: true,
-//       totalCount: postComments.length,
-//       comments: structuredComments,
-//     });
-//   } catch (error) {
-//     return res.status(500).json({
-//       success: false,
-//       message: "Error fetching comments",
-//       error: error.message,
-//     });
-//   }
-// });
 
 app.get("/api/admin-comments/post/:postId", async (req, res) => {
   try {
@@ -3226,6 +2121,143 @@ app.delete("/api/support-team/:id", async (req, res) => {
     return res
       .status(200)
       .json({ success: true, message: "Member deleted successfully." });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// GET: Fetch Personal Details by User ID & Language
+// -----------------------------------------------------------------------------
+app.get("/api/personal-details/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const language = parseLanguage(req.query.language);
+
+    const details = await PersonalDetails.findOne({ userId, language });
+
+    return res.status(200).json({
+      success: true,
+      data: details || null, // Returns null if no record exists yet
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// PUT: Save/Update Personal Text Details (Upsert)
+// -----------------------------------------------------------------------------
+app.put("/api/personal-details/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, aboutYou, gender, birthday, language } = req.body;
+    const formattedLang = language;
+
+    const updatedDetails = await PersonalDetails.findOneAndUpdate(
+      { userId, language: formattedLang },
+      { name, aboutYou, gender, birthday, language: formattedLang },
+      { returnDocument: "after", runValidators: true, upsert: true },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Personal details updated successfully",
+      data: updatedDetails,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// PUT: Upload/Update Profile Image
+// -----------------------------------------------------------------------------
+app.put(
+  "/api/personal-details/:userId/profile-image",
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const language = req.body.language || req.query.language;
+      console.log("req.body.language", req.body.language);
+      console.log("req.query.language", req.query.language);
+
+      if (!req.file) {
+        return res
+          .status(400)
+          .json({ success: false, message: "No image file provided" });
+      }
+
+      const imagePath = `/uploads/${req.file.filename}`;
+
+      // Check existing document to clean up old image from storage
+      const existingDetails = await PersonalDetails.findOne({
+        userId,
+        language,
+      });
+      if (existingDetails && existingDetails.profileImage) {
+        const oldFileName = existingDetails.profileImage
+          .split("/uploads/")
+          .pop();
+        if (oldFileName) {
+          const oldFilePath = path.join(process.cwd(), "uploads", oldFileName);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+          }
+        }
+      }
+
+      const updatedDetails = await PersonalDetails.findOneAndUpdate(
+        { userId, language },
+        { $set: { profileImage: imagePath, language } },
+        { returnDocument: "after", runValidators: true, upsert: true },
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Profile image uploaded successfully",
+        data: updatedDetails,
+      });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+);
+
+// -----------------------------------------------------------------------------
+// DELETE: Delete Profile Image
+// -----------------------------------------------------------------------------
+app.delete("/api/personal-details/:userId/profile-image", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const language = req.query.language;
+
+    const details = await PersonalDetails.findOne({ userId, language });
+
+    if (!details || !details.profileImage) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No profile image to delete" });
+    }
+
+    // Delete image file from storage disk
+    const fileName = details.profileImage.split("/uploads/").pop();
+    if (fileName) {
+      const filePath = path.join(process.cwd(), "uploads", fileName);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    details.profileImage = "";
+    await details.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile image deleted successfully",
+      data: details,
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
