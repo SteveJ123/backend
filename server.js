@@ -361,7 +361,14 @@ app.post("/api/posts", upload.array("files"), async (req, res) => {
     // Exclude author AND filter by matching language
     const targetUsers = await User.find({
       _id: { $ne: author._id },
-      language: postLanguage, // <--- Only notify users matching this post's language
+      $or: [
+        {
+          language: postLanguage, // <--- Only notify users matching this post's language
+        },
+        {
+          role: "admin",
+        },
+      ],
     }).select("_id");
 
     console.log(`Author ID: ${author._id} (${author.role})`);
@@ -901,9 +908,49 @@ app.delete("/api/courses/:id", async (req, res) => {
   }
 });
 
+// app.get("/api`/notifications", async (req, res) => {
+//   try {
+//     const { userId } = req.query;
+
+//     if (!userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId query parameter is required.",
+//       });
+//     }
+
+//     // Fetch all notifications for the recipient sorted by newest first
+//     const notifications = await Notification.find({ recipient: userId })
+//       .populate("sender", "username courseType role")
+//       .populate("postId", "content mediaFiles courseType language")
+//       .sort({ createdAt: -1 });
+
+//     // Optional: Filter by route language for admins if `lang` parameter is provided
+//     if (language && user && user.role === "admin") {
+//       const targetLang = language === "Telugu" ? "Telugu" : "English";
+//       notifications = notifications.filter(
+//         (n) => !n.postId || n.postId.language === targetLang,
+//       );
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       count: notifications.length,
+//       data: notifications,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching notifications:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: error.message,
+//     });
+//   }
+// });
+
 app.get("/api/notifications", async (req, res) => {
   try {
-    const { userId } = req.query;
+    const { userId, language } = req.query;
 
     if (!userId) {
       return res.status(400).json({
@@ -912,11 +959,32 @@ app.get("/api/notifications", async (req, res) => {
       });
     }
 
-    // Fetch all notifications for the recipient sorted by newest first
-    const notifications = await Notification.find({ recipient: userId })
+    // 1. Fetch user to check role
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    // 2. Query notifications for the user
+    let notifications = await Notification.find({ recipient: userId })
       .populate("sender", "username courseType role")
-      .populate("postId", "content mediaFiles courseType")
+      .populate("postId", "content mediaFiles courseType language")
       .sort({ createdAt: -1 });
+
+    // 3. Filter by language ONLY if the user is NOT an admin
+    if (user.role !== "admin" && language) {
+      const targetLang =
+        language.toLowerCase() === "telugu" || language === "te"
+          ? "Telugu"
+          : "English";
+
+      notifications = notifications.filter(
+        (n) => !n.postId || n.postId.language === targetLang,
+      );
+    }
 
     return res.status(200).json({
       success: true,
@@ -932,7 +1000,6 @@ app.get("/api/notifications", async (req, res) => {
     });
   }
 });
-
 /**
  * @route   PATCH /api/notifications/:id/read
  * @desc    Mark a specific notification as read
