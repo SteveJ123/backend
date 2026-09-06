@@ -903,56 +903,117 @@ app.get("/api/posts/user/:userId", async (req, res) => {
 // });
 
 // POST /api/comments
-app.post("/api/comments", async (req, res) => {
+// app.post("/api/comments", async (req, res) => {
+//   try {
+//     const { postId, userId, content, parentId, username } = req.body;
+
+//     if (!postId || !userId || !content?.trim() || !username?.trim()) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "postId, userId, content, and username are required fields.",
+//       });
+//     }
+
+//     // 1. Fetch parent post to check language context
+//     const post = await Post.findById(postId).lean();
+//     if (!post) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Post not found." });
+//     }
+
+//     // 2. Fetch corresponding profile details for this user and language
+//     const profile = await mongoose
+//       .model("PersonalDetails")
+//       .findOne({
+//         userId: new mongoose.Types.ObjectId(userId),
+//         language: post.language,
+//       })
+//       .lean();
+
+//     // 3. Create comment
+//     const newComment = await Comment.create({
+//       postId,
+//       userId,
+//       username,
+//       content: content.trim(),
+//       parentId: parentId || null,
+//     });
+
+//     // 4. Return new comment enriched with user details
+//     return res.status(201).json({
+//       ...newComment.toObject(),
+//       userId: {
+//         _id: userId,
+//         username,
+//         profileImage: profile?.profileImage || "",
+//       },
+//     });
+//   } catch (error) {
+//     return res
+//       .status(500)
+//       .json({ message: "Error submitting comment", error: error.message });
+//   }
+// });
+
+app.post("/api/admin-comments", async (req, res) => {
   try {
     const { postId, userId, content, parentId, username } = req.body;
 
     if (!postId || !userId || !content?.trim() || !username?.trim()) {
       return res.status(400).json({
         success: false,
-        message: "postId, userId, content, and username are required fields.",
+        message: "postId, userId, username, and content are required fields.",
       });
     }
 
-    // 1. Fetch parent post to check language context
-    const post = await Post.findById(postId).lean();
-    if (!post) {
+    // 1. Fetch parent AdminPost to confirm existence
+    const adminPost = await AdminPost.findById(postId).lean();
+    if (!adminPost) {
       return res
         .status(404)
-        .json({ success: false, message: "Post not found." });
+        .json({ success: false, message: "Admin post not found." });
     }
 
-    // 2. Fetch corresponding profile details for this user and language
+    // 2. Fetch profile details matching ONLY userId (no language restriction)
+    const userObjId = mongoose.Types.ObjectId.isValid(userId)
+      ? new mongoose.Types.ObjectId(userId)
+      : userId;
+
     const profile = await mongoose
       .model("PersonalDetails")
       .findOne({
-        userId: new mongoose.Types.ObjectId(userId),
-        language: post.language,
+        $or: [{ userId: userObjId }, { userId: userId.toString() }],
       })
+      .sort({ profileImage: -1, createdAt: -1 }) // Prioritizes records with a profile image, then latest
       .lean();
 
-    // 3. Create comment
-    const newComment = await Comment.create({
+    // 3. Create admin comment
+    const newComment = await AdminComment.create({
       postId,
       userId,
-      username,
+      username: username.trim(),
       content: content.trim(),
       parentId: parentId || null,
     });
 
-    // 4. Return new comment enriched with user details
+    const commentData = newComment.toObject();
+
+    // 4. Return enriched comment with guaranteed userId structure and profileImage
     return res.status(201).json({
-      ...newComment.toObject(),
+      ...commentData,
       userId: {
-        _id: userId,
-        username,
+        _id: userId.toString(),
+        username: username.trim(),
         profileImage: profile?.profileImage || "",
       },
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Error submitting comment", error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: "Error submitting comment",
+      error: error.message,
+    });
   }
 });
 
@@ -2194,6 +2255,200 @@ app.get("/api/admin-users-tracker", async (req, res) => {
   }
 });
 
+// app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
+//   try {
+//     const { userId, content, tagIds, fileTypes, targetLanguage } = req.body;
+
+//     if (!userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId is required to create a post.",
+//       });
+//     }
+
+//     if (!mongoose.Types.ObjectId.isValid(userId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid userId format provided.",
+//       });
+//     }
+
+//     // 1. Fetch Author (Admin)
+//     let author = await User.findById(userId);
+//     if (!author) {
+//       author = await User.findOne({ role: "admin" });
+//     }
+//     if (!author) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Post author not found in database.",
+//       });
+//     }
+
+//     // 2. Determine target language for the post
+//     // Falls back to Admin's registered language if targetLanguage isn't sent
+//     const postLanguage = targetLanguage || author.language || "English";
+
+//     // Parse JSON strings safely
+//     let parsedTagIds = [];
+//     if (tagIds) {
+//       try {
+//         parsedTagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
+//       } catch (e) {
+//         parsedTagIds = [];
+//       }
+//     }
+
+//     const typesArray = Array.isArray(fileTypes)
+//       ? fileTypes
+//       : fileTypes
+//         ? [fileTypes]
+//         : [];
+
+//     const mediaFiles = (req.files || []).map((file, index) => ({
+//       filename: file.filename,
+//       path: file.path,
+//       mimetype: file.mimetype,
+//       mediaType: typesArray[index] || "file",
+//     }));
+
+//     // 3. Save AdminPost with the designated language
+//     const newPost = new AdminPost({
+//       userId: author._id,
+//       content,
+//       language: postLanguage, // <--- Restricts post to this stream
+//       tagIds: parsedTagIds,
+//       courseType: author.courseType,
+//       mediaFiles,
+//     });
+
+//     await newPost.save();
+
+//     // 4. STRICT FILTER: Only fetch recipients whose language MATCHES postLanguage
+//     const targetUsers = await User.find({
+//       _id: { $ne: author._id },
+//       language: postLanguage, // <--- Only notifies students in English or Telugu stream
+//     }).select("_id");
+
+//     console.log(`Admin Post Created for Stream: ${postLanguage}`);
+//     console.log(`Notifying ${targetUsers.length} ${postLanguage} students.`);
+
+//     // 5. Send notifications ONLY to matching students
+//     if (targetUsers.length > 0) {
+//       const notifications = targetUsers.map((user) => ({
+//         recipient: user._id,
+//         sender: author._id,
+//         postId: newPost._id,
+//         postModel: "AdminPost",
+//         postContentSnippet: content ? content.trim() : "Uploaded media post.",
+//         isRead: false,
+//       }));
+
+//       await Notification.insertMany(notifications);
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message: `Admin post published to ${postLanguage} students successfully.`,
+//       data: newPost,
+//     });
+//   } catch (error) {
+//     console.error("Error creating admin post:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: error.message,
+//     });
+//   }
+// });
+
+// app.get("/api/admin-posts", async (req, res) => {
+//   try {
+//     const { language } = req.query;
+
+//     let formattedLang;
+//     if (language) {
+//       const lower = language.toLowerCase();
+//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
+//       if (lower === "en" || lower === "english") formattedLang = "English";
+//     }
+
+//     const posts = await AdminPost.aggregate([
+//       // 1. Filter by language if provided
+//       ...(formattedLang ? [{ $match: { language: formattedLang } }] : []),
+
+//       // 2. Join with user collection (author of the post)
+//       {
+//         $lookup: {
+//           from: "register", // Change to "register" if your MongoDB collection name is register
+//           let: { authorId: "$userId" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$_id" }, { $toString: "$$authorId" }],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorDetails",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$authorDetails",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+
+//       // 3. Join with admincomments
+//       {
+//         $lookup: {
+//           from: "admincomments",
+//           let: { postId: "$_id" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$postId" }, { $toString: "$$postId" }],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "allComments",
+//         },
+//       },
+
+//       // 4. Add comment count and populated userId object
+//       {
+//         $addFields: {
+//           commentCount: { $size: "$allComments" },
+//           userId: {
+//             _id: "$authorDetails._id",
+//             username: "$authorDetails.username",
+//             role: "$authorDetails.role",
+//             language: "$authorDetails.language",
+//           },
+//         },
+//       },
+
+//       // 5. Cleanup temporary arrays and sort
+//       {
+//         $project: {
+//           allComments: 0,
+//           authorDetails: 0,
+//         },
+//       },
+//       { $sort: { createdAt: -1 } },
+//     ]);
+
+//     return res.status(200).json({ success: true, data: posts });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// });
+
+// POST /api/admin-posts
 app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
   try {
     const { userId, content, tagIds, fileTypes, targetLanguage } = req.body;
@@ -2225,10 +2480,9 @@ app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
     }
 
     // 2. Determine target language for the post
-    // Falls back to Admin's registered language if targetLanguage isn't sent
     const postLanguage = targetLanguage || author.language || "English";
 
-    // Parse JSON strings safely
+    // Safely parse JSON strings sent from FormData
     let parsedTagIds = [];
     if (tagIds) {
       try {
@@ -2251,11 +2505,11 @@ app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
       mediaType: typesArray[index] || "file",
     }));
 
-    // 3. Save AdminPost with the designated language
+    // 3. Save AdminPost with designated language
     const newPost = new AdminPost({
       userId: author._id,
       content,
-      language: postLanguage, // <--- Restricts post to this stream
+      language: postLanguage,
       tagIds: parsedTagIds,
       courseType: author.courseType,
       mediaFiles,
@@ -2263,16 +2517,16 @@ app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
 
     await newPost.save();
 
-    // 4. STRICT FILTER: Only fetch recipients whose language MATCHES postLanguage
+    // 4. STRICT FILTER: Fetch recipients whose language matches postLanguage
     const targetUsers = await User.find({
       _id: { $ne: author._id },
-      language: postLanguage, // <--- Only notifies students in English or Telugu stream
+      language: postLanguage,
     }).select("_id");
 
     console.log(`Admin Post Created for Stream: ${postLanguage}`);
     console.log(`Notifying ${targetUsers.length} ${postLanguage} students.`);
 
-    // 5. Send notifications ONLY to matching students
+    // 5. Send notifications to matching students
     if (targetUsers.length > 0) {
       const notifications = targetUsers.map((user) => ({
         recipient: user._id,
@@ -2301,6 +2555,218 @@ app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
   }
 });
 
+// GET /api/admin-posts
+// app.get("/api/admin-posts", async (req, res) => {
+//   try {
+//     const { language } = req.query;
+
+//     let formattedLang;
+//     if (language) {
+//       const lower = language.toLowerCase();
+//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
+//       if (lower === "en" || lower === "english") formattedLang = "English";
+//     }
+
+//     const posts = await AdminPost.aggregate([
+//       // 1. Join Admin Post Author details safely
+//       {
+//         $lookup: {
+//           from: "register",
+//           let: { postUserId: "$userId" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$_id" }, { $toString: "$$postUserId" }],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorDetails",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$authorDetails",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+
+//       // 2. Filter posts by language match if query provided
+//       ...(formattedLang
+//         ? [
+//             {
+//               $match: {
+//                 $or: [
+//                   { language: formattedLang },
+//                   { "authorDetails.language": formattedLang },
+//                 ],
+//               },
+//             },
+//           ]
+//         : []),
+
+//       // 3. Join Post Author's PersonalDetails by matching userId AND language
+//       {
+//         $lookup: {
+//           from: "personaldetails",
+//           let: {
+//             authorId: "$authorDetails._id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $and: [
+//                     {
+//                       $eq: [
+//                         { $toString: "$userId" },
+//                         { $toString: "$$authorId" },
+//                       ],
+//                     },
+//                     { $eq: ["$language", "$$postLang"] },
+//                   ],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorProfile",
+//         },
+//       },
+
+//       // 4. Join admincomments collection AND populate comment authors with profile images
+//       {
+//         $lookup: {
+//           from: "admincomments",
+//           let: {
+//             postId: "$_id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$postId" }, { $toString: "$$postId" }],
+//                 },
+//               },
+//             },
+//             // Join Comment Author User
+//             {
+//               $lookup: {
+//                 from: "register",
+//                 let: { commentUserId: "$userId" },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $eq: [
+//                           { $toString: "$_id" },
+//                           { $toString: "$$commentUserId" },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthor",
+//               },
+//             },
+//             {
+//               $unwind: {
+//                 path: "$commentAuthor",
+//                 preserveNullAndEmptyArrays: true,
+//               },
+//             },
+//             // Join Comment Author's PersonalDetails matching post language
+//             {
+//               $lookup: {
+//                 from: "personaldetails",
+//                 let: {
+//                   commentAuthorId: "$commentAuthor._id",
+//                   targetLang: "$$postLang",
+//                 },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $and: [
+//                           {
+//                             $eq: [
+//                               { $toString: "$userId" },
+//                               { $toString: "$$commentAuthorId" },
+//                             ],
+//                           },
+//                           { $eq: ["$language", "$$targetLang"] },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthorProfile",
+//               },
+//             },
+//             // Structure Comment Object with Profile Image
+//             {
+//               $project: {
+//                 _id: 1,
+//                 content: 1,
+//                 createdAt: 1,
+//                 userId: {
+//                   _id: "$commentAuthor._id",
+//                   username: "$commentAuthor.username",
+//                   profileImage: {
+//                     $ifNull: [
+//                       {
+//                         $arrayElemAt: ["$commentAuthorProfile.profileImage", 0],
+//                       },
+//                       "",
+//                     ],
+//                   },
+//                 },
+//               },
+//             },
+//           ],
+//           as: "allComments",
+//         },
+//       },
+
+//       // 5. Structure Admin Post Output with populated userId object & profileImage
+//       {
+//         $addFields: {
+//           commentCount: { $size: "$allComments" },
+//           userId: {
+//             _id: "$authorDetails._id",
+//             username: "$authorDetails.username",
+//             mobile: "$authorDetails.mobile",
+//             role: "$authorDetails.role",
+//             courseType: "$authorDetails.courseType",
+//             language: "$authorDetails.language",
+//             profileImage: {
+//               $ifNull: [
+//                 { $arrayElemAt: ["$authorProfile.profileImage", 0] },
+//                 "",
+//               ],
+//             },
+//           },
+//         },
+//       },
+
+//       // 6. Cleanup temp arrays and sort
+//       {
+//         $project: {
+//           authorDetails: 0,
+//           authorProfile: 0,
+//         },
+//       },
+//       { $sort: { createdAt: -1 } },
+//     ]);
+
+//     return res.status(200).json({ success: true, data: posts });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// });
+
 app.get("/api/admin-posts", async (req, res) => {
   try {
     const { language } = req.query;
@@ -2313,19 +2779,16 @@ app.get("/api/admin-posts", async (req, res) => {
     }
 
     const posts = await AdminPost.aggregate([
-      // 1. Filter by language if provided
-      ...(formattedLang ? [{ $match: { language: formattedLang } }] : []),
-
-      // 2. Join with user collection (author of the post)
+      // 1. Join Admin Post Author details safely
       {
         $lookup: {
-          from: "register", // Change to "register" if your MongoDB collection name is register
-          let: { authorId: "$userId" },
+          from: "register",
+          let: { postUserId: "$userId" },
           pipeline: [
             {
               $match: {
                 $expr: {
-                  $eq: [{ $toString: "$_id" }, { $toString: "$$authorId" }],
+                  $eq: [{ $toString: "$_id" }, { $toString: "$$postUserId" }],
                 },
               },
             },
@@ -2340,11 +2803,57 @@ app.get("/api/admin-posts", async (req, res) => {
         },
       },
 
-      // 3. Join with admincomments
+      // 2. Filter posts by language match if query provided
+      ...(formattedLang
+        ? [
+            {
+              $match: {
+                $or: [
+                  { language: formattedLang },
+                  { "authorDetails.language": formattedLang },
+                ],
+              },
+            },
+          ]
+        : []),
+
+      // 3. Join Post Author's PersonalDetails by userId (Prefer matching post lang, fallback to latest)
+      {
+        $lookup: {
+          from: "personaldetails",
+          let: {
+            authorId: "$authorDetails._id",
+            postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: [{ $toString: "$userId" }, { $toString: "$$authorId" }],
+                },
+              },
+            },
+            {
+              $addFields: {
+                isLangMatch: {
+                  $cond: [{ $eq: ["$language", "$$postLang"] }, 1, 0],
+                },
+              },
+            },
+            { $sort: { isLangMatch: -1, createdAt: -1 } },
+          ],
+          as: "authorProfile",
+        },
+      },
+
+      // 4. Join admincomments and match commenter profile strictly by userId
       {
         $lookup: {
           from: "admincomments",
-          let: { postId: "$_id" },
+          let: {
+            postId: "$_id",
+            postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+          },
           pipeline: [
             {
               $match: {
@@ -2353,29 +2862,131 @@ app.get("/api/admin-posts", async (req, res) => {
                 },
               },
             },
+            // Join Comment Author User
+            {
+              $lookup: {
+                from: "register",
+                let: { commentUserId: "$userId" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $eq: [
+                          { $toString: "$_id" },
+                          { $toString: "$$commentUserId" },
+                        ],
+                      },
+                    },
+                  },
+                ],
+                as: "commentAuthor",
+              },
+            },
+            {
+              $unwind: {
+                path: "$commentAuthor",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+            // Join Comment Author's PersonalDetails matching ONLY by userId
+            {
+              $lookup: {
+                from: "personaldetails",
+                let: {
+                  commentAuthorId: {
+                    $ifNull: ["$commentAuthor._id", "$userId"],
+                  },
+                  targetLang: "$$postLang",
+                },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $eq: [
+                          { $toString: "$userId" },
+                          { $toString: "$$commentAuthorId" },
+                        ],
+                      },
+                    },
+                  },
+                  // Optional: Sort so if they have the post's language profile image, take that first, otherwise fall back to any available image
+                  {
+                    $addFields: {
+                      isLangMatch: {
+                        $cond: [{ $eq: ["$language", "$$targetLang"] }, 1, 0],
+                      },
+                      hasImage: {
+                        $cond: [
+                          {
+                            $and: [
+                              { $ne: ["$profileImage", null] },
+                              { $ne: ["$profileImage", ""] },
+                            ],
+                          },
+                          1,
+                          0,
+                        ],
+                      },
+                    },
+                  },
+                  { $sort: { isLangMatch: -1, hasImage: -1, createdAt: -1 } },
+                ],
+                as: "commentAuthorProfile",
+              },
+            },
+            // Structure Comment Object with Profile Image
+            {
+              $project: {
+                _id: 1,
+                content: 1,
+                createdAt: 1,
+                userId: {
+                  _id: { $ifNull: ["$commentAuthor._id", "$userId"] },
+                  username: {
+                    $ifNull: ["$commentAuthor.username", "$username"],
+                  },
+                  profileImage: {
+                    $ifNull: [
+                      {
+                        $arrayElemAt: ["$commentAuthorProfile.profileImage", 0],
+                      },
+                      "",
+                    ],
+                  },
+                },
+              },
+            },
           ],
           as: "allComments",
         },
       },
 
-      // 4. Add comment count and populated userId object
+      // 5. Structure Admin Post Output
       {
         $addFields: {
           commentCount: { $size: "$allComments" },
           userId: {
             _id: "$authorDetails._id",
             username: "$authorDetails.username",
+            mobile: "$authorDetails.mobile",
             role: "$authorDetails.role",
+            courseType: "$authorDetails.courseType",
             language: "$authorDetails.language",
+            profileImage: {
+              $ifNull: [
+                { $arrayElemAt: ["$authorProfile.profileImage", 0] },
+                "",
+              ],
+            },
           },
         },
       },
 
-      // 5. Cleanup temporary arrays and sort
+      // 6. Cleanup temp arrays and sort
       {
         $project: {
-          allComments: 0,
           authorDetails: 0,
+          authorProfile: 0,
         },
       },
       { $sort: { createdAt: -1 } },
@@ -2721,6 +3332,138 @@ app.delete("/api/admin-posts/:id", async (req, res) => {
 });
 
 // POST /api/admin-comments
+// app.post("/api/admin-comments", async (req, res) => {
+//   try {
+//     const { postId, userId, content, parentId, username } = req.body;
+
+//     if (!postId || !userId || !content?.trim() || !username?.trim()) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "postId, userId, username, and content are required fields.",
+//       });
+//     }
+
+//     const newComment = await AdminComment.create({
+//       postId,
+//       userId,
+//       username: username.trim(),
+//       content: content.trim(),
+//       parentId: parentId || null,
+//     });
+
+//     // Return lean object so frontend can attach properties cleanly
+//     return res.status(201).json(newComment.toObject());
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: "Error submitting comment",
+//       error: error.message,
+//     });
+//   }
+// });
+
+// app.get("/api/admin-comments/post/:postId", async (req, res) => {
+//   try {
+//     const { postId } = req.params;
+
+//     // Fetch all comments and populate user details (username, profile details)
+//     const postComments = await AdminComment.find({ postId })
+//       .populate("userId", "username mobile role language") // Populates user info
+//       .sort({ createdAt: 1 })
+//       .lean();
+
+//     const parentComments = [];
+//     const repliesMap = {};
+
+//     postComments.forEach((c) => {
+//       // Fallback string conversion for parentId check
+//       if (!c.parentId) {
+//         parentComments.push({ ...c, replies: [] });
+//       } else {
+//         const pId = c.parentId.toString();
+//         if (!repliesMap[pId]) repliesMap[pId] = [];
+//         repliesMap[pId].push(c);
+//       }
+//     });
+
+//     // Nest replies inside corresponding parent items
+//     const structuredComments = parentComments
+//       .map((parent) => ({
+//         ...parent,
+//         replies: repliesMap[parent._id.toString()] || [],
+//       }))
+//       .reverse();
+
+//     return res.status(200).json({
+//       success: true,
+//       totalCount: postComments.length,
+//       comments: structuredComments,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: "Error fetching comments",
+//       error: error.message,
+//     });
+//   }
+// });
+
+// POST /api/admin-comments
+// app.post("/api/admin-comments", async (req, res) => {
+//   try {
+//     const { postId, userId, content, parentId, username } = req.body;
+
+//     if (!postId || !userId || !content?.trim() || !username?.trim()) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "postId, userId, username, and content are required fields.",
+//       });
+//     }
+
+//     // 1. Fetch parent AdminPost to obtain its language context
+//     const adminPost = await AdminPost.findById(postId).lean();
+//     if (!adminPost) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Admin post not found." });
+//     }
+
+//     // 2. Fetch profile details matching user ID and post language
+//     const profile = await mongoose
+//       .model("PersonalDetails")
+//       .findOne({
+//         userId: new mongoose.Types.ObjectId(userId),
+//         language: adminPost.language,
+//       })
+//       .lean();
+
+//     // 3. Create admin comment
+//     const newComment = await AdminComment.create({
+//       postId,
+//       userId,
+//       username: username.trim(),
+//       content: content.trim(),
+//       parentId: parentId || null,
+//     });
+
+//     // 4. Return enriched comment with populated profile picture & user details
+//     return res.status(201).json({
+//       ...newComment.toObject(),
+//       userId: {
+//         _id: userId,
+//         username: username.trim(),
+//         profileImage: profile?.profileImage || "",
+//       },
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: "Error submitting comment",
+//       error: error.message,
+//     });
+//   }
+// });
+
 app.post("/api/admin-comments", async (req, res) => {
   try {
     const { postId, userId, content, parentId, username } = req.body;
@@ -2732,6 +3475,23 @@ app.post("/api/admin-comments", async (req, res) => {
       });
     }
 
+    // 1. Fetch parent AdminPost to obtain its language context
+    const adminPost = await AdminPost.findById(postId).lean();
+    if (!adminPost) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Admin post not found." });
+    }
+
+    const profile = await mongoose
+      .model("PersonalDetails")
+      .findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        language: adminPost.language,
+      })
+      .lean();
+
+    // 3. Create admin comment
     const newComment = await AdminComment.create({
       postId,
       userId,
@@ -2740,8 +3500,17 @@ app.post("/api/admin-comments", async (req, res) => {
       parentId: parentId || null,
     });
 
-    // Return lean object so frontend can attach properties cleanly
-    return res.status(201).json(newComment.toObject());
+    const commentData = newComment.toObject();
+
+    // 4. Return enriched comment with guaranteed userId structure
+    return res.status(201).json({
+      ...commentData,
+      userId: {
+        _id: userId.toString(),
+        username: username.trim(),
+        profileImage: profile?.profileImage || "",
+      },
+    });
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -2751,21 +3520,108 @@ app.post("/api/admin-comments", async (req, res) => {
   }
 });
 
+// GET /api/admin-comments/post/:postId
 app.get("/api/admin-comments/post/:postId", async (req, res) => {
   try {
     const { postId } = req.params;
 
-    // Fetch all comments and populate user details (username, profile details)
-    const postComments = await AdminComment.find({ postId })
-      .populate("userId", "username mobile role language") // Populates user info
-      .sort({ createdAt: 1 })
-      .lean();
+    // 1. Fetch parent AdminPost to obtain language context
+    const adminPost = await AdminPost.findById(postId).lean();
+    if (!adminPost) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Admin post not found." });
+    }
 
+    // 2. Aggregate admin comments and attach language-matched profileImage
+    const postComments = await AdminComment.aggregate([
+      {
+        $match: {
+          postId: new mongoose.Types.ObjectId(postId),
+        },
+      },
+      // Join User details from registration collection
+      {
+        $lookup: {
+          from: "register",
+          let: { commentUserId: "$userId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: [
+                    { $toString: "$_id" },
+                    { $toString: "$$commentUserId" },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "author",
+        },
+      },
+      {
+        $unwind: {
+          path: "$author",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      // Join PersonalDetails matching user ID AND post language
+      {
+        $lookup: {
+          from: "personaldetails",
+          let: {
+            authorId: "$author._id",
+            targetLang: adminPost.language,
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    {
+                      $eq: [
+                        { $toString: "$userId" },
+                        { $toString: "$$authorId" },
+                      ],
+                    },
+                    { $eq: ["$language", "$$targetLang"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "authorProfile",
+        },
+      },
+      // Shape response object
+      {
+        $project: {
+          _id: 1,
+          postId: 1,
+          content: 1,
+          parentId: 1,
+          createdAt: 1,
+          userId: {
+            _id: "$author._id",
+            username: { $ifNull: ["$author.username", "$username"] },
+            profileImage: {
+              $ifNull: [
+                { $arrayElemAt: ["$authorProfile.profileImage", 0] },
+                "",
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { createdAt: 1 } },
+    ]);
+
+    // 3. Build parent-reply comment hierarchy
     const parentComments = [];
     const repliesMap = {};
 
     postComments.forEach((c) => {
-      // Fallback string conversion for parentId check
       if (!c.parentId) {
         parentComments.push({ ...c, replies: [] });
       } else {
@@ -2775,7 +3631,7 @@ app.get("/api/admin-comments/post/:postId", async (req, res) => {
       }
     });
 
-    // Nest replies inside corresponding parent items
+    // Nest replies under parent comments and arrange latest parent first
     const structuredComments = parentComments
       .map((parent) => ({
         ...parent,
