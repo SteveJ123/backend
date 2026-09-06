@@ -237,62 +237,6 @@ app.delete("/api/registered-users/:id", async (req, res) => {
   }
 });
 // ----test----
-// app.post("/api/login", async (req, res) => {
-//   try {
-//     const { mobile, password } = req.body;
-
-//     if (!mobile || !password) {
-//       return res
-//         .status(400)
-//         .json({ message: "Mobile and password are required" });
-//     }
-
-//     // 1. Find user in the 'register' collection by mobile number
-//     const user = await User.findOne({ mobile });
-
-//     if (!user) {
-//       return res
-//         .status(404)
-//         .json({ message: "User not registered. Please sign up first." });
-//     }
-
-//     // 2. Check password
-//     const isMatch = await bcrypt.compare(password, user.passwordHash);
-//     if (!isMatch) {
-//       return res
-//         .status(401)
-//         .json({ message: "Invalid mobile number or password" });
-//     }
-
-//     // 3. Generate JWT Token (MUST include user.language for downstream feed filtering)
-//     const token = jwt.sign(
-//       {
-//         userId: user._id,
-//         mobile: user.mobile,
-//         role: user.role,
-//         language: user.language, // Added language here
-//       },
-//       process.env.JWT_SECRET || "YOUR_JWT_SECRET_KEY",
-//       { expiresIn: "1d" },
-//     );
-
-//     // 4. Return success response
-//     return res.status(200).json({
-//       success: true,
-//       message: "Login successful!",
-//       token,
-//       id: user._id,
-//       role: user.role,
-//       username: user.username,
-//       courseType: user.courseType,
-//       language: user.language, // Fixed: dynamically reading from user document
-//     });
-//   } catch (error) {
-//     console.error("Login Error:", error);
-//     return res.status(500).json({ message: "Server error during login" });
-//   }
-// });
-
 app.post("/api/login", async (req, res) => {
   try {
     const { mobile, password } = req.body;
@@ -320,31 +264,19 @@ app.post("/api/login", async (req, res) => {
         .json({ message: "Invalid mobile number or password" });
     }
 
-    // 3. Fetch user's profile image from PersonalDetails based on userId and language
-    const profile = await mongoose
-      .model("PersonalDetails")
-      .findOne({
-        userId: user._id,
-        language: user.language,
-      })
-      .lean();
-
-    const profileImage = profile?.profileImage || "";
-
-    // 4. Generate JWT Token
+    // 3. Generate JWT Token (MUST include user.language for downstream feed filtering)
     const token = jwt.sign(
       {
         userId: user._id,
         mobile: user.mobile,
         role: user.role,
-        language: user.language,
-        profileImage,
+        language: user.language, // Added language here
       },
       process.env.JWT_SECRET || "YOUR_JWT_SECRET_KEY",
       { expiresIn: "1d" },
     );
 
-    // 5. Return success response with profileImage
+    // 4. Return success response
     return res.status(200).json({
       success: true,
       message: "Login successful!",
@@ -353,8 +285,7 @@ app.post("/api/login", async (req, res) => {
       role: user.role,
       username: user.username,
       courseType: user.courseType,
-      language: user.language,
-      profileImage, // <--- Returns profile picture path or empty string
+      language: user.language, // Fixed: dynamically reading from user document
     });
   } catch (error) {
     console.error("Login Error:", error);
@@ -473,96 +404,6 @@ app.post("/api/posts", upload.array("files"), async (req, res) => {
   }
 });
 
-// app.get("/api/posts", async (req, res) => {
-//   try {
-//     const { language } = req.query;
-
-//     let formattedLang;
-//     if (language) {
-//       const lower = language.toLowerCase();
-//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
-//       if (lower === "en" || lower === "english") formattedLang = "English";
-//     }
-
-//     const posts = await Post.aggregate([
-//       // 1. Join user details safely (handles string vs objectId)
-//       {
-//         $lookup: {
-//           from: "register",
-//           let: { postUserId: "$userId" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: {
-//                   $eq: [{ $toString: "$_id" }, { $toString: "$$postUserId" }],
-//                 },
-//               },
-//             },
-//           ],
-//           as: "authorDetails",
-//         },
-//       },
-//       {
-//         $unwind: {
-//           path: "$authorDetails",
-//           preserveNullAndEmptyArrays: true,
-//         },
-//       },
-
-//       // 2. Filter by language match if query provided
-//       ...(formattedLang
-//         ? [{ $match: { "authorDetails.language": formattedLang } }]
-//         : []),
-
-//       // 3. Join comments collection
-//       {
-//         $lookup: {
-//           from: "comments",
-//           let: { postId: "$_id" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: {
-//                   $eq: [{ $toString: "$postId" }, { $toString: "$$postId" }],
-//                 },
-//               },
-//             },
-//           ],
-//           as: "allComments",
-//         },
-//       },
-
-//       // 4. Attach author details object and comment count
-//       {
-//         $addFields: {
-//           commentCount: { $size: "$allComments" },
-//           userId: {
-//             _id: "$authorDetails._id",
-//             username: "$authorDetails.username",
-//             mobile: "$authorDetails.mobile",
-//             role: "$authorDetails.role",
-//             courseType: "$authorDetails.courseType",
-//             language: "$authorDetails.language",
-//           },
-//         },
-//       },
-
-//       // 5. Cleanup temporary arrays
-//       {
-//         $project: {
-//           allComments: 0,
-//           authorDetails: 0,
-//         },
-//       },
-//       { $sort: { createdAt: -1 } },
-//     ]);
-
-//     return res.status(200).json({ success: true, data: posts });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
-//   }
-// });
-
 app.get("/api/posts", async (req, res) => {
   try {
     const { language } = req.query;
@@ -575,7 +416,7 @@ app.get("/api/posts", async (req, res) => {
     }
 
     const posts = await Post.aggregate([
-      // 1. Join Post Author details safely
+      // 1. Join user details safely (handles string vs objectId)
       {
         $lookup: {
           from: "register",
@@ -599,58 +440,16 @@ app.get("/api/posts", async (req, res) => {
         },
       },
 
-      // 2. Filter posts by language match if query provided
-      // (Using $post.language directly or author language)
+      // 2. Filter by language match if query provided
       ...(formattedLang
-        ? [
-            {
-              $match: {
-                $or: [
-                  { language: formattedLang },
-                  { "authorDetails.language": formattedLang },
-                ],
-              },
-            },
-          ]
+        ? [{ $match: { "authorDetails.language": formattedLang } }]
         : []),
 
-      // 3. Join Post Author's PersonalDetails by matching userId AND language
-      {
-        $lookup: {
-          from: "personaldetails",
-          let: {
-            authorId: "$authorDetails._id",
-            postLang: { $ifNull: ["$language", "$authorDetails.language"] },
-          },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    {
-                      $eq: [
-                        { $toString: "$userId" },
-                        { $toString: "$$authorId" },
-                      ],
-                    },
-                    { $eq: ["$language", "$$postLang"] },
-                  ],
-                },
-              },
-            },
-          ],
-          as: "authorProfile",
-        },
-      },
-
-      // 4. Join comments collection AND populate each comment's author profile
+      // 3. Join comments collection
       {
         $lookup: {
           from: "comments",
-          let: {
-            postId: "$_id",
-            postLang: { $ifNull: ["$language", "$authorDetails.language"] },
-          },
+          let: { postId: "$_id" },
           pipeline: [
             {
               $match: {
@@ -659,86 +458,12 @@ app.get("/api/posts", async (req, res) => {
                 },
               },
             },
-            // Join Comment Author User
-            {
-              $lookup: {
-                from: "register",
-                let: { commentUserId: "$userId" },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $eq: [
-                          { $toString: "$_id" },
-                          { $toString: "$$commentUserId" },
-                        ],
-                      },
-                    },
-                  },
-                ],
-                as: "commentAuthor",
-              },
-            },
-            {
-              $unwind: {
-                path: "$commentAuthor",
-                preserveNullAndEmptyArrays: true,
-              },
-            },
-            // Join Comment Author's PersonalDetails matching post language
-            {
-              $lookup: {
-                from: "personaldetails",
-                let: {
-                  commentAuthorId: "$commentAuthor._id",
-                  targetLang: "$$postLang",
-                },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $and: [
-                          {
-                            $eq: [
-                              { $toString: "$userId" },
-                              { $toString: "$$commentAuthorId" },
-                            ],
-                          },
-                          { $eq: ["$language", "$$targetLang"] },
-                        ],
-                      },
-                    },
-                  },
-                ],
-                as: "commentAuthorProfile",
-              },
-            },
-            // Structure Comment Object with Profile Image
-            {
-              $project: {
-                _id: 1,
-                content: 1,
-                createdAt: 1,
-                userId: {
-                  _id: "$commentAuthor._id",
-                  username: "$commentAuthor.username",
-                  profileImage: {
-                    $ifNull: [
-                      {
-                        $arrayElemAt: ["$commentAuthorProfile.profileImage", 0],
-                      },
-                      "",
-                    ],
-                  },
-                },
-              },
-            },
           ],
           as: "allComments",
         },
       },
 
-      // 5. Structure Post Output with author profileImage
+      // 4. Attach author details object and comment count
       {
         $addFields: {
           commentCount: { $size: "$allComments" },
@@ -749,21 +474,15 @@ app.get("/api/posts", async (req, res) => {
             role: "$authorDetails.role",
             courseType: "$authorDetails.courseType",
             language: "$authorDetails.language",
-            profileImage: {
-              $ifNull: [
-                { $arrayElemAt: ["$authorProfile.profileImage", 0] },
-                "",
-              ],
-            },
           },
         },
       },
 
-      // 6. Cleanup temp arrays
+      // 5. Cleanup temporary arrays
       {
         $project: {
+          allComments: 0,
           authorDetails: 0,
-          authorProfile: 0,
         },
       },
       { $sort: { createdAt: -1 } },
@@ -834,104 +553,17 @@ app.get("/api/posts/user/:userId", async (req, res) => {
 });
 
 // POST /api/comments
-// app.post("/api/comments", async (req, res) => {
-//   try {
-//     const { postId, userId, content, parentId, username } = req.body;
-
-//     if (!postId || !userId || !content || !content.trim() || !username.trim()) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "postId, userId, and content are required fields.",
-//       });
-//     }
-
-//     const newComment = await Comment.create({
-//       postId,
-//       userId,
-//       username,
-//       content: content.trim(),
-//       parentId: parentId || null,
-//     });
-
-//     return res.status(201).json(newComment);
-//   } catch (error) {
-//     return res
-//       .status(500)
-//       .json({ message: "Error submitting comment", error: error.message });
-//   }
-// });
-
-// // GET /api/comments/post/:postId
-// app.get("/api/comments/post/:postId", async (req, res) => {
-//   try {
-//     const { postId } = req.params;
-
-//     // Fetch all comments belonging to the post
-//     const postComments = await Comment.find({ postId })
-//       .sort({ createdAt: -1 })
-//       .lean();
-
-//     const totalCount = postComments.length;
-//     const parentComments = [];
-//     const repliesMap = {};
-
-//     postComments.forEach((c) => {
-//       if (!c.parentId) {
-//         parentComments.push({ ...c, replies: [] });
-//       } else {
-//         const pId = c.parentId.toString();
-//         if (!repliesMap[pId]) repliesMap[pId] = [];
-//         repliesMap[pId].push(c);
-//       }
-//     });
-
-//     const structuredComments = parentComments.map((parent) => ({
-//       ...parent,
-//       replies: repliesMap[parent._id.toString()] || [],
-//     }));
-
-//     return res.status(200).json({
-//       success: true,
-//       totalCount,
-//       comments: structuredComments,
-//     });
-//   } catch (error) {
-//     return res
-//       .status(500)
-//       .json({ message: "Error fetching comments", error: error.message });
-//   }
-// });
-
-// POST /api/comments
 app.post("/api/comments", async (req, res) => {
   try {
     const { postId, userId, content, parentId, username } = req.body;
 
-    if (!postId || !userId || !content?.trim() || !username?.trim()) {
+    if (!postId || !userId || !content || !content.trim() || !username.trim()) {
       return res.status(400).json({
         success: false,
-        message: "postId, userId, content, and username are required fields.",
+        message: "postId, userId, and content are required fields.",
       });
     }
 
-    // 1. Fetch parent post to check language context
-    const post = await Post.findById(postId).lean();
-    if (!post) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Post not found." });
-    }
-
-    // 2. Fetch corresponding profile details for this user and language
-    const profile = await mongoose
-      .model("PersonalDetails")
-      .findOne({
-        userId: new mongoose.Types.ObjectId(userId),
-        language: post.language,
-      })
-      .lean();
-
-    // 3. Create comment
     const newComment = await Comment.create({
       postId,
       userId,
@@ -940,15 +572,7 @@ app.post("/api/comments", async (req, res) => {
       parentId: parentId || null,
     });
 
-    // 4. Return new comment enriched with user details
-    return res.status(201).json({
-      ...newComment.toObject(),
-      userId: {
-        _id: userId,
-        username,
-        profileImage: profile?.profileImage || "",
-      },
-    });
+    return res.status(201).json(newComment);
   } catch (error) {
     return res
       .status(500)
@@ -961,99 +585,11 @@ app.get("/api/comments/post/:postId", async (req, res) => {
   try {
     const { postId } = req.params;
 
-    // 1. Fetch parent post to get language context
-    const post = await Post.findById(postId).lean();
-    if (!post) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Post not found." });
-    }
+    // Fetch all comments belonging to the post
+    const postComments = await Comment.find({ postId })
+      .sort({ createdAt: -1 })
+      .lean();
 
-    // 2. Aggregate comments and attach matching language profileImage
-    const postComments = await Comment.aggregate([
-      {
-        $match: {
-          postId: new mongoose.Types.ObjectId(postId),
-        },
-      },
-      // Join User details
-      {
-        $lookup: {
-          from: "register",
-          let: { commentUserId: "$userId" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $eq: [
-                    { $toString: "$_id" },
-                    { $toString: "$$commentUserId" },
-                  ],
-                },
-              },
-            },
-          ],
-          as: "author",
-        },
-      },
-      {
-        $unwind: {
-          path: "$author",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      // Join PersonalDetails matching user ID AND post language
-      {
-        $lookup: {
-          from: "personaldetails",
-          let: {
-            authorId: "$author._id",
-            targetLang: post.language,
-          },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    {
-                      $eq: [
-                        { $toString: "$userId" },
-                        { $toString: "$$authorId" },
-                      ],
-                    },
-                    { $eq: ["$language", "$$targetLang"] },
-                  ],
-                },
-              },
-            },
-          ],
-          as: "authorProfile",
-        },
-      },
-      // Shape comment output structure
-      {
-        $project: {
-          _id: 1,
-          postId: 1,
-          content: 1,
-          parentId: 1,
-          createdAt: 1,
-          userId: {
-            _id: "$author._id",
-            username: { $ifNull: ["$author.username", "$username"] },
-            profileImage: {
-              $ifNull: [
-                { $arrayElemAt: ["$authorProfile.profileImage", 0] },
-                "",
-              ],
-            },
-          },
-        },
-      },
-      { $sort: { createdAt: -1 } },
-    ]);
-
-    // 3. Organize into parent comments and nested replies
     const totalCount = postComments.length;
     const parentComments = [];
     const repliesMap = {};
@@ -1502,197 +1038,67 @@ app.patch("/api/notifications/:id/read", async (req, res) => {
 });
 
 // UPDATE POST & MEDIA FILES
-// app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
-//   try {
-//     // 1. Extract userId from req.body (or from req.user if using auth middleware)
-//     const { content, userId, removedMediaIds } = req.body;
-//     const post = await Post.findById(req.params.id);
-
-//     if (!post) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Post not found" });
-//     }
-
-//     // 2. Normalize and compare post.userId with incoming userId
-//     const postUserId = post.userId ? post.userId.toString() : "";
-//     const incomingUserId = userId ? userId.toString() : "";
-
-//     if (!incomingUserId || postUserId !== incomingUserId) {
-//       return res
-//         .status(403)
-//         .json({ success: false, message: "Unauthorized action" });
-//     }
-
-//     // 3. Update text content
-//     if (content !== undefined) post.content = content;
-
-//     // 4. Remove specified media files from disk & database
-//     if (removedMediaIds) {
-//       const idsToDelete = Array.isArray(removedMediaIds)
-//         ? removedMediaIds
-//         : [removedMediaIds];
-
-//       post.mediaFiles = post.mediaFiles.filter((file) => {
-//         if (idsToDelete.includes(file._id.toString())) {
-//           // Delete file physically from disk
-//           const filePath = path.join(process.cwd(), file.path);
-//           if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-//           return false;
-//         }
-//         return true;
-//       });
-//     }
-
-//     // 5. Append newly uploaded media files
-//     if (req.files && req.files.length > 0) {
-//       const uploadedMedia = req.files.map((file) => ({
-//         filename: file.originalname,
-//         path: file.path,
-//         mimetype: file.mimetype,
-//         mediaType: file.mimetype.startsWith("image/")
-//           ? "image"
-//           : file.mimetype.startsWith("video/")
-//             ? "video"
-//             : "audio",
-//       }));
-//       post.mediaFiles.push(...uploadedMedia);
-//     }
-
-//     const updatedPost = await post.save();
-//     return res.status(200).json({ success: true, data: updatedPost });
-//   } catch (error) {
-//     return res.status(500).json({ success: false, error: error.message });
-//   }
-// });
-
 app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
   try {
-    const {
-      userId,
-      content,
-      tagIds,
-      fileTypes,
-      targetLanguage,
-      removedMediaIds,
-    } = req.body;
-
-    // 1. Fetch post to update
+    // 1. Extract userId from req.body (or from req.user if using auth middleware)
+    const { content, userId, removedMediaIds } = req.body;
     const post = await Post.findById(req.params.id);
+
     if (!post) {
       return res
         .status(404)
         .json({ success: false, message: "Post not found" });
     }
 
-    // 2. Fetch editor user to verify identity, role, and language settings
-    const author = await User.findById(userId);
-    if (!author) {
-      return res.status(404).json({
-        success: false,
-        message: "User making the edit not found in database.",
-      });
-    }
+    // 2. Normalize and compare post.userId with incoming userId
+    const postUserId = post.userId ? post.userId.toString() : "";
+    const incomingUserId = userId ? userId.toString() : "";
 
-    // 3. Authorization check: Ensure only post author or admin can update
-    const isOwner = post.userId
-      ? post.userId.toString() === author._id.toString()
-      : false;
-    const isAdmin = author.role === "admin";
-
-    if (!isOwner && !isAdmin) {
+    if (!incomingUserId || postUserId !== incomingUserId) {
       return res
         .status(403)
         .json({ success: false, message: "Unauthorized action" });
     }
 
-    // 4. Update core content fields
+    // 3. Update text content
     if (content !== undefined) post.content = content;
 
-    // Determine target post language update
-    if (isAdmin && targetLanguage) {
-      post.language = targetLanguage;
-    } else if (author.language) {
-      post.language = author.language;
-    }
-
-    // Safely parse JSON tagIds sent from Angular FormData
-    if (tagIds !== undefined) {
-      try {
-        post.tagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
-      } catch (e) {
-        post.tagIds = [];
-      }
-    }
-
-    // 5. Delete removed media files from disk & document array
+    // 4. Remove specified media files from disk & database
     if (removedMediaIds) {
-      let idsToDelete = [];
-      try {
-        idsToDelete =
-          typeof removedMediaIds === "string"
-            ? JSON.parse(removedMediaIds)
-            : removedMediaIds;
-      } catch (e) {
-        idsToDelete = Array.isArray(removedMediaIds)
-          ? removedMediaIds
-          : [removedMediaIds];
-      }
+      const idsToDelete = Array.isArray(removedMediaIds)
+        ? removedMediaIds
+        : [removedMediaIds];
 
       post.mediaFiles = post.mediaFiles.filter((file) => {
         if (idsToDelete.includes(file._id.toString())) {
+          // Delete file physically from disk
           const filePath = path.join(process.cwd(), file.path);
-          if (fs.existsSync(filePath)) {
-            try {
-              fs.unlinkSync(filePath);
-            } catch (err) {
-              console.error(`Failed to delete file at ${filePath}:`, err);
-            }
-          }
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
           return false;
         }
         return true;
       });
     }
 
-    // 6. Process newly uploaded media files with custom fileTypes
+    // 5. Append newly uploaded media files
     if (req.files && req.files.length > 0) {
-      const typesArray = Array.isArray(fileTypes)
-        ? fileTypes
-        : fileTypes
-          ? [fileTypes]
-          : [];
-
-      const newUploadedMedia = req.files.map((file, index) => ({
-        filename: file.filename,
+      const uploadedMedia = req.files.map((file) => ({
+        filename: file.originalname,
         path: file.path,
         mimetype: file.mimetype,
-        mediaType:
-          typesArray[index] ||
-          (file.mimetype.startsWith("image/")
-            ? "image"
-            : file.mimetype.startsWith("video/")
-              ? "video"
-              : "audio"),
+        mediaType: file.mimetype.startsWith("image/")
+          ? "image"
+          : file.mimetype.startsWith("video/")
+            ? "video"
+            : "audio",
       }));
-
-      post.mediaFiles.push(...newUploadedMedia);
+      post.mediaFiles.push(...uploadedMedia);
     }
 
     const updatedPost = await post.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Post updated successfully",
-      data: updatedPost,
-    });
+    return res.status(200).json({ success: true, data: updatedPost });
   } catch (error) {
-    console.error("Error updating post:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server Error",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
