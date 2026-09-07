@@ -4163,6 +4163,93 @@ app.delete("/api/personal-details/:userId/profile-image", async (req, res) => {
   }
 });
 
+app.get("/api/admin-profile", async (req, res) => {
+  try {
+    const adminDetails = await User.aggregate([
+      // 1. Filter users where role is 'admin'
+      {
+        $match: {
+          role: "admin",
+        },
+      },
+      // 2. Lookup PersonalDetails matching by userId
+      {
+        $lookup: {
+          from: "personaldetails", // Collection name in MongoDB
+          let: { adminUserId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: [
+                    { $toString: "$userId" },
+                    { $toString: "$$adminUserId" },
+                  ],
+                },
+              },
+            },
+            // Sort to prioritize documents that have a profileImage, then by latest creation
+            {
+              $addFields: {
+                hasImage: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $ne: ["$profileImage", null] },
+                        { $ne: ["$profileImage", ""] },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+            { $sort: { hasImage: -1, createdAt: -1 } },
+          ],
+          as: "profileDetails",
+        },
+      },
+      // 3. Format the final output structure
+      {
+        $project: {
+          _id: 1,
+          username: 1,
+          mobile: 1,
+          role: 1,
+          courseType: 1,
+          language: 1,
+          profileImage: {
+            $ifNull: [
+              { $arrayElemAt: ["$profileDetails.profileImage", 0] },
+              "",
+            ],
+          },
+        },
+      },
+    ]);
+
+    if (!adminDetails || adminDetails.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No admin found",
+      });
+    }
+
+    // Returns array of admins (or single object using adminDetails[0] if expecting 1 admin)
+    return res.status(200).json({
+      success: true,
+      data: adminDetails,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching admin profile",
+      error: error.message,
+    });
+  }
+});
+
 // Mount the course routes under the '/api/courses' prefix
 app.use("/api/course", courseRoutes);
 
