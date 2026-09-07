@@ -320,16 +320,16 @@ app.post("/api/login", async (req, res) => {
         .json({ message: "Invalid mobile number or password" });
     }
 
-    // 3. Fetch user's profile image from PersonalDetails based on userId and language
-    const profile = await mongoose
-      .model("PersonalDetails")
-      .findOne({
-        userId: user._id,
-        language: user.language,
-      })
-      .lean();
+    // // 3. Fetch user's profile image from PersonalDetails based on userId and language
+    // const profile = await mongoose
+    //   .model("PersonalDetails")
+    //   .findOne({
+    //     userId: user._id,
+    //     language: user.language,
+    //   })
+    //   .lean();
 
-    const profileImage = profile?.profileImage || "";
+    // const profileImage = profile?.profileImage || "";
 
     // 4. Generate JWT Token
     const token = jwt.sign(
@@ -338,7 +338,7 @@ app.post("/api/login", async (req, res) => {
         mobile: user.mobile,
         role: user.role,
         language: user.language,
-        profileImage,
+        // profileImage,
       },
       process.env.JWT_SECRET || "YOUR_JWT_SECRET_KEY",
       { expiresIn: "1d" },
