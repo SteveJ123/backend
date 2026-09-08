@@ -53,33 +53,32 @@ const allowedOrigins = [
   "http://localhost:4200", // Angular local port
 ];
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow non-browser calls (like Postman, curl, or mobile native apps)
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    } else {
-      console.error(`Blocked by CORS: ${origin}`);
-      // Return false instead of throwing an Error object to prevent server 500
-      return callback(null, false);
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "x-language",
-    "X-Language",
-    "Accept",
-  ],
-  credentials: true,
-  optionsSuccessStatus: 200, // Legacy browser support (e.g. IE11)
-};
-
-// Middleware
-app.use(cors(corsOptions));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like Postman, Curl, or mobile apps)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        console.error("CORS blocked origin:", origin);
+        // Pass false instead of an Error object to prevent 500 crashes
+        return callback(null, false);
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-language",
+      "X-Language",
+      "Accept"
+    ],
+    credentials: true,
+    optionsSuccessStatus: 200 // Fixes issues with legacy browsers/proxies
+  })
+);
 // 3. Handle Preflight OPTIONS Requests explicitly
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
