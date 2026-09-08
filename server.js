@@ -72,7 +72,9 @@ const corsOptions = {
 
 // Middleware
 app.use(cors(corsOptions));
+// 3. Handle Preflight OPTIONS Requests explicitly
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Connect to MongoDB Atlas
