@@ -44,8 +44,34 @@ if (!fs.existsSync("./uploads")) {
 
 const app = express();
 
+// 1. Allowed Origins List
+const allowedOrigins = [
+  "https://www.younghappyandhealthy.com",
+  "https://younghappyandhealthy.com", // Include both with and without 'www'
+  "http://localhost:3000", // For local development
+  "http://localhost:5173", // Vite local port (if using Vite)
+  "http://localhost:4200", // Angular local port
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, or Postman)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-language", "X-Language"],
+  credentials: true,
+  optionsSuccessStatus: 200, // For legacy browser support
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
