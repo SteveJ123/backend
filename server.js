@@ -54,20 +54,28 @@ const allowedOrigins = [
 ];
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, or Postman)
+  origin: (origin, callback) => {
+    // Allow non-browser calls (like Postman, curl, or mobile native apps)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      console.error(`Blocked by CORS: ${origin}`);
+      // Return false instead of throwing an Error object to prevent server 500
+      return callback(null, false);
     }
   },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-language", "X-Language"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-language",
+    "X-Language",
+    "Accept",
+  ],
   credentials: true,
-  optionsSuccessStatus: 200, // For legacy browser support
+  optionsSuccessStatus: 200, // Legacy browser support (e.g. IE11)
 };
 
 // Middleware
