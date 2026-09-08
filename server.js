@@ -354,7 +354,7 @@ app.post("/api/login", async (req, res) => {
       username: user.username,
       courseType: user.courseType,
       language: user.language,
-      profileImage, // <--- Returns profile picture path or empty string
+      // profileImage, // <--- Returns profile picture path or empty string
     });
   } catch (error) {
     console.error("Login Error:", error);
