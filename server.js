@@ -58,7 +58,7 @@ app.use(
     origin: function (origin, callback) {
       // Allow requests with no origin (like Postman, Curl, or mobile apps)
       if (!origin) return callback(null, true);
-      
+
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       } else {
@@ -73,11 +73,11 @@ app.use(
       "Authorization",
       "x-language",
       "X-Language",
-      "Accept"
+      "Accept",
     ],
     credentials: true,
-    optionsSuccessStatus: 200 // Fixes issues with legacy browsers/proxies
-  })
+    optionsSuccessStatus: 200, // Fixes issues with legacy browsers/proxies
+  }),
 );
 // 3. Handle Preflight OPTIONS Requests explicitly
 app.use(express.json());
@@ -3779,9 +3779,66 @@ app.delete("/api/admin-posts/:id", async (req, res) => {
 //   }
 // });
 
+// app.post("/api/admin-comments", async (req, res) => {
+//   try {
+//     const { postId, userId, content, parentId, username } = req.body;
+
+//     if (!postId || !userId || !content?.trim() || !username?.trim()) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "postId, userId, username, and content are required fields.",
+//       });
+//     }
+
+//     // 1. Fetch parent AdminPost to obtain its language context
+//     const adminPost = await AdminPost.findById(postId).lean();
+//     if (!adminPost) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Admin post not found." });
+//     }
+
+//     const profile = await mongoose
+//       .model("PersonalDetails")
+//       .findOne({
+//         userId: new mongoose.Types.ObjectId(userId),
+//         language: adminPost.language,
+//       })
+//       .lean();
+
+//     // 3. Create admin comment
+//     const newComment = await AdminComment.create({
+//       postId,
+//       userId,
+//       username: username.trim(),
+//       content: content.trim(),
+//       parentId: parentId || null,
+//     });
+
+//     const commentData = newComment.toObject();
+
+//     // 4. Return enriched comment with guaranteed userId structure
+//     return res.status(201).json({
+//       ...commentData,
+//       userId: {
+//         _id: userId.toString(),
+//         username: username.trim(),
+//         profileImage: profile?.profileImage || "",
+//       },
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: "Error submitting comment",
+//       error: error.message,
+//     });
+//   }
+// });
+
 app.post("/api/admin-comments", async (req, res) => {
   try {
-    const { postId, userId, content, parentId, username } = req.body;
+    const { postId, userId, content, parentId, username, language } = req.body;
+    console.log("admin post comemnts language ", language);
 
     if (!postId || !userId || !content?.trim() || !username?.trim()) {
       return res.status(400).json({
@@ -3790,7 +3847,7 @@ app.post("/api/admin-comments", async (req, res) => {
       });
     }
 
-    // 1. Fetch parent AdminPost to obtain its language context
+    // 1. Fetch parent AdminPost to obtain its language context and author
     const adminPost = await AdminPost.findById(postId).lean();
     if (!adminPost) {
       return res
@@ -3798,11 +3855,15 @@ app.post("/api/admin-comments", async (req, res) => {
         .json({ success: false, message: "Admin post not found." });
     }
 
+    // Extract post language (defaults to "English" if unspecified)
+    const postLanguage = language;
+
+    // 2. Fetch commenter profile picture for current post language
     const profile = await mongoose
       .model("PersonalDetails")
       .findOne({
         userId: new mongoose.Types.ObjectId(userId),
-        language: adminPost.language,
+        language: postLanguage,
       })
       .lean();
 
@@ -3817,7 +3878,31 @@ app.post("/api/admin-comments", async (req, res) => {
 
     const commentData = newComment.toObject();
 
-    // 4. Return enriched comment with guaranteed userId structure
+    const targetUsers = await User.find({
+      _id: { $ne: new mongoose.Types.ObjectId(userId) }, // Exclude commenter
+      $or: [
+        { language: postLanguage }, // All users in that language group
+        { role: "admin" }, // All admins (overrides language filter)
+      ],
+    }).select("_id");
+
+    if (targetUsers.length > 0) {
+      const notifications = targetUsers.map((recipient) => ({
+        recipient: recipient._id,
+        sender: userId,
+        postId: adminPost._id,
+        postModel: "AdminPost",
+        commentId: newComment._id,
+        postContentSnippet: content.trim(),
+        type: "comment",
+        language: postLanguage,
+        isRead: false,
+      }));
+
+      await Notification.insertMany(notifications);
+    }
+
+    // 5. Return enriched comment
     return res.status(201).json({
       ...commentData,
       userId: {
@@ -3827,6 +3912,7 @@ app.post("/api/admin-comments", async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Error submitting comment:", error);
     return res.status(500).json({
       success: false,
       message: "Error submitting comment",
