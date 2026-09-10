@@ -938,9 +938,63 @@ app.get("/api/posts/user/:userId", async (req, res) => {
 // });
 
 // POST /api/comments
+// app.post("/api/comments", async (req, res) => {
+//   try {
+//     const { postId, userId, content, parentId, username } = req.body;
+
+//     if (!postId || !userId || !content?.trim() || !username?.trim()) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "postId, userId, content, and username are required fields.",
+//       });
+//     }
+
+//     // 1. Fetch parent post to check language context
+//     const post = await Post.findById(postId).lean();
+//     if (!post) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Post not found." });
+//     }
+
+//     // 2. Fetch corresponding profile details for this user and language
+//     const profile = await mongoose
+//       .model("PersonalDetails")
+//       .findOne({
+//         userId: new mongoose.Types.ObjectId(userId),
+//         language: post.language,
+//       })
+//       .lean();
+
+//     // 3. Create comment
+//     const newComment = await Comment.create({
+//       postId,
+//       userId,
+//       username,
+//       content: content.trim(),
+//       parentId: parentId || null,
+//     });
+
+//     // 4. Return new comment enriched with user details
+//     return res.status(201).json({
+//       ...newComment.toObject(),
+//       userId: {
+//         _id: userId,
+//         username,
+//         profileImage: profile?.profileImage || "",
+//       },
+//     });
+//   } catch (error) {
+//     return res
+//       .status(500)
+//       .json({ message: "Error submitting comment", error: error.message });
+//   }
+// });
+
 app.post("/api/comments", async (req, res) => {
   try {
-    const { postId, userId, content, parentId, username } = req.body;
+    const { postId, userId, content, parentId, username, language } = req.body;
+    console.log("language", language);
 
     if (!postId || !userId || !content?.trim() || !username?.trim()) {
       return res.status(400).json({
@@ -949,7 +1003,7 @@ app.post("/api/comments", async (req, res) => {
       });
     }
 
-    // 1. Fetch parent post to check language context
+    // 1. Fetch parent Post to check language context
     const post = await Post.findById(postId).lean();
     if (!post) {
       return res
@@ -957,12 +1011,15 @@ app.post("/api/comments", async (req, res) => {
         .json({ success: false, message: "Post not found." });
     }
 
+    // Determine target language context (fallback to post language or payload)
+    const postLanguage = language || post.language || "English";
+
     // 2. Fetch corresponding profile details for this user and language
     const profile = await mongoose
       .model("PersonalDetails")
       .findOne({
         userId: new mongoose.Types.ObjectId(userId),
-        language: post.language,
+        language: postLanguage,
       })
       .lean();
 
@@ -970,24 +1027,54 @@ app.post("/api/comments", async (req, res) => {
     const newComment = await Comment.create({
       postId,
       userId,
-      username,
+      username: username.trim(),
       content: content.trim(),
       parentId: parentId || null,
     });
 
-    // 4. Return new comment enriched with user details
+    const commentData = newComment.toObject();
+
+    // 4. Send targeted notifications
+    const targetUsers = await User.find({
+      _id: { $ne: new mongoose.Types.ObjectId(userId) }, // Exclude commenter
+      $or: [
+        { language: postLanguage }, // All users in that language group
+        { role: "admin" }, // All admins
+      ],
+    }).select("_id");
+
+    if (targetUsers.length > 0) {
+      const notifications = targetUsers.map((recipient) => ({
+        recipient: recipient._id,
+        sender: userId,
+        postId: post._id,
+        postModel: "Post",
+        commentId: newComment._id,
+        postContentSnippet: content.trim(),
+        type: "comment",
+        language: postLanguage,
+        isRead: false,
+      }));
+
+      await Notification.insertMany(notifications);
+    }
+
+    // 5. Return new comment enriched with user details
     return res.status(201).json({
-      ...newComment.toObject(),
+      ...commentData,
       userId: {
-        _id: userId,
-        username,
+        _id: userId.toString(),
+        username: username.trim(),
         profileImage: profile?.profileImage || "",
       },
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Error submitting comment", error: error.message });
+    console.error("Error submitting comment:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error submitting comment",
+      error: error.message,
+    });
   }
 });
 
