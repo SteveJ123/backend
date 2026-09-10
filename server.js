@@ -122,6 +122,14 @@ app.post("/api/register", async (req, res) => {
 
     await newUser.save();
 
+    const personalDetails = new PersonalDetails({
+      userId: newUser._id,
+      name: username, // Maps the registration username to name
+      language: language, // Matches the language chosen at registration
+    });
+
+    await personalDetails.save();
+
     res.status(201).json({
       message: "User registered successfully",
       userId: newUser._id,
@@ -4133,17 +4141,49 @@ app.get("/api/personal-details/:userId", async (req, res) => {
 // -----------------------------------------------------------------------------
 // PUT: Save/Update Personal Text Details (Upsert)
 // -----------------------------------------------------------------------------
+// app.put("/api/personal-details/:userId", async (req, res) => {
+//   try {
+//     const { userId } = req.params;
+//     const { name, aboutYou, gender, birthday, language } = req.body;
+//     const formattedLang = language;
+
+//     const updatedDetails = await PersonalDetails.findOneAndUpdate(
+//       { userId, language: formattedLang },
+//       { name, aboutYou, gender, birthday, language: formattedLang },
+//       { returnDocument: "after", runValidators: true, upsert: true },
+//     );
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Personal details updated successfully",
+//       data: updatedDetails,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// });
+
 app.put("/api/personal-details/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const { name, aboutYou, gender, birthday, language } = req.body;
     const formattedLang = language;
 
+    // 1. Update PersonalDetails document
     const updatedDetails = await PersonalDetails.findOneAndUpdate(
       { userId, language: formattedLang },
       { name, aboutYou, gender, birthday, language: formattedLang },
       { returnDocument: "after", runValidators: true, upsert: true },
     );
+
+    // 2. Update the username in the User model if provided
+    if (name) {
+      await User.findByIdAndUpdate(
+        userId,
+        { username: name },
+        { runValidators: true },
+      );
+    }
 
     return res.status(200).json({
       success: true,
