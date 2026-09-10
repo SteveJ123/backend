@@ -3364,12 +3364,11 @@ app.get("/api/admin-comments/post/:postId", async (req, res) => {
     });
 
     // Nest replies into corresponding parent items
-    const structuredComments = parentComments
-      .map((parent) => ({
-        ...parent,
-        replies: repliesMap[parent._id.toString()] || [],
-      }))
-      .reverse();
+    const structuredComments = parentComments.map((parent) => ({
+      ...parent,
+      replies: repliesMap[parent._id.toString()] || [],
+    }));
+    // .reverse();
 
     return res.status(200).json({
       success: true,
