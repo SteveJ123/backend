@@ -607,6 +607,441 @@ app.post("/api/posts", upload.array("files"), async (req, res) => {
 //   }
 // });
 
+// app.get("/api/posts", async (req, res) => {
+//   try {
+//     const { language } = req.query;
+
+//     let formattedLang;
+//     if (language) {
+//       const lower = language.toLowerCase();
+//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
+//       if (lower === "en" || lower === "english") formattedLang = "English";
+//     }
+
+//     const posts = await Post.aggregate([
+//       // 1. Join Post Author details safely
+//       {
+//         $lookup: {
+//           from: "register",
+//           let: { postUserId: "$userId" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$_id" }, { $toString: "$$postUserId" }],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorDetails",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$authorDetails",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+
+//       // 2. Filter posts by language match if query provided
+//       // (Using $post.language directly or author language)
+//       ...(formattedLang
+//         ? [
+//             {
+//               $match: {
+//                 $or: [
+//                   { language: formattedLang },
+//                   { "authorDetails.language": formattedLang },
+//                 ],
+//               },
+//             },
+//           ]
+//         : []),
+
+//       // 3. Join Post Author's PersonalDetails by matching userId AND language
+//       {
+//         $lookup: {
+//           from: "personaldetails",
+//           let: {
+//             authorId: "$authorDetails._id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $and: [
+//                     {
+//                       $eq: [
+//                         { $toString: "$userId" },
+//                         { $toString: "$$authorId" },
+//                       ],
+//                     },
+//                     { $eq: ["$language", "$$postLang"] },
+//                   ],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorProfile",
+//         },
+//       },
+
+//       // 4. Join comments collection AND populate each comment's author profile
+//       {
+//         $lookup: {
+//           from: "comments",
+//           let: {
+//             postId: "$_id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$postId" }, { $toString: "$$postId" }],
+//                 },
+//               },
+//             },
+//             // Join Comment Author User
+//             {
+//               $lookup: {
+//                 from: "register",
+//                 let: { commentUserId: "$userId" },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $eq: [
+//                           { $toString: "$_id" },
+//                           { $toString: "$$commentUserId" },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthor",
+//               },
+//             },
+//             {
+//               $unwind: {
+//                 path: "$commentAuthor",
+//                 preserveNullAndEmptyArrays: true,
+//               },
+//             },
+//             // Join Comment Author's PersonalDetails matching post language
+//             {
+//               $lookup: {
+//                 from: "personaldetails",
+//                 let: {
+//                   commentAuthorId: "$commentAuthor._id",
+//                   targetLang: "$$postLang",
+//                 },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $and: [
+//                           {
+//                             $eq: [
+//                               { $toString: "$userId" },
+//                               { $toString: "$$commentAuthorId" },
+//                             ],
+//                           },
+//                           { $eq: ["$language", "$$targetLang"] },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthorProfile",
+//               },
+//             },
+//             // Structure Comment Object with Profile Image
+//             {
+//               $project: {
+//                 _id: 1,
+//                 content: 1,
+//                 createdAt: 1,
+//                 userId: {
+//                   _id: "$commentAuthor._id",
+//                   username: "$commentAuthor.username",
+//                   profileImage: {
+//                     $ifNull: [
+//                       {
+//                         $arrayElemAt: ["$commentAuthorProfile.profileImage", 0],
+//                       },
+//                       "",
+//                     ],
+//                   },
+//                 },
+//               },
+//             },
+//           ],
+//           as: "allComments",
+//         },
+//       },
+
+//       // 5. Structure Post Output with author profileImage
+//       {
+//         $addFields: {
+//           commentCount: { $size: "$allComments" },
+//           userId: {
+//             _id: "$authorDetails._id",
+//             username: "$authorDetails.username",
+//             mobile: "$authorDetails.mobile",
+//             role: "$authorDetails.role",
+//             courseType: "$authorDetails.courseType",
+//             language: "$authorDetails.language",
+//             profileImage: {
+//               $ifNull: [
+//                 { $arrayElemAt: ["$authorProfile.profileImage", 0] },
+//                 "",
+//               ],
+//             },
+//           },
+//         },
+//       },
+
+//       // 6. Cleanup temp arrays
+//       {
+//         $project: {
+//           authorDetails: 0,
+//           authorProfile: 0,
+//         },
+//       },
+//       { $sort: { createdAt: -1 } },
+//     ]);
+
+//     return res.status(200).json({ success: true, data: posts });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// });
+
+// app.get("/api/posts", async (req, res) => {
+//   try {
+//     const { language } = req.query;
+
+//     let formattedLang;
+//     if (language) {
+//       const lower = language.toLowerCase();
+//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
+//       if (lower === "en" || lower === "english") formattedLang = "English";
+//     }
+
+//     const posts = await Post.aggregate([
+//       // 1. Join Post Author details safely
+//       {
+//         $lookup: {
+//           from: "register",
+//           let: { postUserId: "$userId" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$_id" }, { $toString: "$$postUserId" }],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorDetails",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$authorDetails",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+
+//       // 2. Filter posts by language match if query provided
+//       ...(formattedLang
+//         ? [
+//             {
+//               $match: {
+//                 $or: [
+//                   { language: formattedLang },
+//                   { "authorDetails.language": formattedLang },
+//                 ],
+//               },
+//             },
+//           ]
+//         : []),
+
+//       // 3. Join Post Author's PersonalDetails by matching userId AND language
+//       {
+//         $lookup: {
+//           from: "personaldetails",
+//           let: {
+//             authorId: "$authorDetails._id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $and: [
+//                     {
+//                       $eq: [
+//                         { $toString: "$userId" },
+//                         { $toString: "$$authorId" },
+//                       ],
+//                     },
+//                     { $eq: ["$language", "$$postLang"] },
+//                   ],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorProfile",
+//         },
+//       },
+
+//       // 4. Join comments collection AND populate each comment's author profile
+//       {
+//         $lookup: {
+//           from: "comments",
+//           let: {
+//             postId: "$_id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$postId" }, { $toString: "$$postId" }],
+//                 },
+//               },
+//             },
+//             // Join Comment Author User
+//             {
+//               $lookup: {
+//                 from: "register",
+//                 let: { commentUserId: "$userId" },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $eq: [
+//                           { $toString: "$_id" },
+//                           { $toString: "$$commentUserId" },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthor",
+//               },
+//             },
+//             {
+//               $unwind: {
+//                 path: "$commentAuthor",
+//                 preserveNullAndEmptyArrays: true,
+//               },
+//             },
+//             // Join Comment Author's PersonalDetails matching post language
+//             {
+//               $lookup: {
+//                 from: "personaldetails",
+//                 let: {
+//                   commentAuthorId: "$commentAuthor._id",
+//                   targetLang: "$$postLang",
+//                 },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $and: [
+//                           {
+//                             $eq: [
+//                               { $toString: "$userId" },
+//                               { $toString: "$$commentAuthorId" },
+//                             ],
+//                           },
+//                           { $eq: ["$language", "$$targetLang"] },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthorProfile",
+//               },
+//             },
+//             // Structure Comment Object with Name and Profile Image
+//             {
+//               $project: {
+//                 _id: 1,
+//                 content: 1,
+//                 createdAt: 1,
+//                 userId: {
+//                   _id: "$commentAuthor._id",
+//                   username: "$commentAuthor.username",
+//                   name: {
+//                     $ifNull: [
+//                       { $arrayElemAt: ["$commentAuthorProfile.name", 0] },
+//                       "$commentAuthor.username",
+//                     ],
+//                   },
+//                   profileImage: {
+//                     $ifNull: [
+//                       {
+//                         $arrayElemAt: ["$commentAuthorProfile.profileImage", 0],
+//                       },
+//                       "",
+//                     ],
+//                   },
+//                 },
+//               },
+//             },
+//           ],
+//           as: "allComments",
+//         },
+//       },
+
+//       // 5. Structure Post Output with author name & profileImage
+//       {
+//         $addFields: {
+//           commentCount: { $size: "$allComments" },
+//           userId: {
+//             _id: "$authorDetails._id",
+//             username: "$authorDetails.username",
+//             name: {
+//               $ifNull: [
+//                 { $arrayElemAt: ["$authorProfile.name", 0] },
+//                 "$authorDetails.username",
+//               ],
+//             },
+//             mobile: "$authorDetails.mobile",
+//             role: "$authorDetails.role",
+//             courseType: "$authorDetails.courseType",
+//             language: "$authorDetails.language",
+//             profileImage: {
+//               $ifNull: [
+//                 { $arrayElemAt: ["$authorProfile.profileImage", 0] },
+//                 "",
+//               ],
+//             },
+//           },
+//         },
+//       },
+
+//       // 6. Cleanup temp arrays
+//       {
+//         $project: {
+//           authorDetails: 0,
+//           authorProfile: 0,
+//         },
+//       },
+//       { $sort: { createdAt: -1 } },
+//     ]);
+
+//     return res.status(200).json({ success: true, data: posts });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// });
+
 app.get("/api/posts", async (req, res) => {
   try {
     const { language } = req.query;
@@ -619,7 +1054,7 @@ app.get("/api/posts", async (req, res) => {
     }
 
     const posts = await Post.aggregate([
-      // 1. Join Post Author details safely
+      // 1. Join Post Author details using ObjectId conversion if needed
       {
         $lookup: {
           from: "register",
@@ -628,7 +1063,15 @@ app.get("/api/posts", async (req, res) => {
             {
               $match: {
                 $expr: {
-                  $eq: [{ $toString: "$_id" }, { $toString: "$$postUserId" }],
+                  $or: [
+                    { $eq: ["$_id", "$$postUserId"] },
+                    {
+                      $eq: [
+                        { $toString: "$_id" },
+                        { $toString: "$$postUserId" },
+                      ],
+                    },
+                  ],
                 },
               },
             },
@@ -644,7 +1087,6 @@ app.get("/api/posts", async (req, res) => {
       },
 
       // 2. Filter posts by language match if query provided
-      // (Using $post.language directly or author language)
       ...(formattedLang
         ? [
             {
@@ -672,9 +1114,14 @@ app.get("/api/posts", async (req, res) => {
                 $expr: {
                   $and: [
                     {
-                      $eq: [
-                        { $toString: "$userId" },
-                        { $toString: "$$authorId" },
+                      $or: [
+                        { $eq: ["$userId", "$$authorId"] },
+                        {
+                          $eq: [
+                            { $toString: "$userId" },
+                            { $toString: "$$authorId" },
+                          ],
+                        },
                       ],
                     },
                     { $eq: ["$language", "$$postLang"] },
@@ -699,7 +1146,15 @@ app.get("/api/posts", async (req, res) => {
             {
               $match: {
                 $expr: {
-                  $eq: [{ $toString: "$postId" }, { $toString: "$$postId" }],
+                  $or: [
+                    { $eq: ["$postId", "$$postId"] },
+                    {
+                      $eq: [
+                        { $toString: "$postId" },
+                        { $toString: "$$postId" },
+                      ],
+                    },
+                  ],
                 },
               },
             },
@@ -712,9 +1167,14 @@ app.get("/api/posts", async (req, res) => {
                   {
                     $match: {
                       $expr: {
-                        $eq: [
-                          { $toString: "$_id" },
-                          { $toString: "$$commentUserId" },
+                        $or: [
+                          { $eq: ["$_id", "$$commentUserId"] },
+                          {
+                            $eq: [
+                              { $toString: "$_id" },
+                              { $toString: "$$commentUserId" },
+                            ],
+                          },
                         ],
                       },
                     },
@@ -729,7 +1189,7 @@ app.get("/api/posts", async (req, res) => {
                 preserveNullAndEmptyArrays: true,
               },
             },
-            // Join Comment Author's PersonalDetails matching post language
+            // Join Comment Author's PersonalDetails
             {
               $lookup: {
                 from: "personaldetails",
@@ -743,9 +1203,14 @@ app.get("/api/posts", async (req, res) => {
                       $expr: {
                         $and: [
                           {
-                            $eq: [
-                              { $toString: "$userId" },
-                              { $toString: "$$commentAuthorId" },
+                            $or: [
+                              { $eq: ["$userId", "$$commentAuthorId"] },
+                              {
+                                $eq: [
+                                  { $toString: "$userId" },
+                                  { $toString: "$$commentAuthorId" },
+                                ],
+                              },
                             ],
                           },
                           { $eq: ["$language", "$$targetLang"] },
@@ -757,7 +1222,7 @@ app.get("/api/posts", async (req, res) => {
                 as: "commentAuthorProfile",
               },
             },
-            // Structure Comment Object with Profile Image
+            // Structure Comment Object
             {
               $project: {
                 _id: 1,
@@ -766,6 +1231,13 @@ app.get("/api/posts", async (req, res) => {
                 userId: {
                   _id: "$commentAuthor._id",
                   username: "$commentAuthor.username",
+                  name: {
+                    $ifNull: [
+                      { $arrayElemAt: ["$commentAuthorProfile.name", 0] },
+                      "$commentAuthor.username",
+                      "Unknown User",
+                    ],
+                  },
                   profileImage: {
                     $ifNull: [
                       {
@@ -782,13 +1254,32 @@ app.get("/api/posts", async (req, res) => {
         },
       },
 
-      // 5. Structure Post Output with author profileImage
+      // 5. Structure Final Output
       {
-        $addFields: {
+        $project: {
+          content: 1,
+          courseType: 1,
+          language: 1,
+          mediaFiles: 1,
+          tagIds: 1,
+          likeCount: 1,
+          likes: 1,
+          views: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          __v: 1,
           commentCount: { $size: "$allComments" },
+          allComments: 1,
           userId: {
-            _id: "$authorDetails._id",
+            _id: { $ifNull: ["$authorDetails._id", "$userId"] },
             username: "$authorDetails.username",
+            name: {
+              $ifNull: [
+                { $arrayElemAt: ["$authorProfile.name", 0] },
+                "$authorDetails.username",
+                "Unknown User",
+              ],
+            },
             mobile: "$authorDetails.mobile",
             role: "$authorDetails.role",
             courseType: "$authorDetails.courseType",
@@ -800,14 +1291,6 @@ app.get("/api/posts", async (req, res) => {
               ],
             },
           },
-        },
-      },
-
-      // 6. Cleanup temp arrays
-      {
-        $project: {
-          authorDetails: 0,
-          authorProfile: 0,
         },
       },
       { $sort: { createdAt: -1 } },
