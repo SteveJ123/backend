@@ -868,129 +868,6 @@ app.get("/api/posts/user/:userId", async (req, res) => {
   }
 });
 
-// POST /api/comments
-// app.post("/api/comments", async (req, res) => {
-//   try {
-//     const { postId, userId, content, parentId, username } = req.body;
-
-//     if (!postId || !userId || !content || !content.trim() || !username.trim()) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "postId, userId, and content are required fields.",
-//       });
-//     }
-
-//     const newComment = await Comment.create({
-//       postId,
-//       userId,
-//       username,
-//       content: content.trim(),
-//       parentId: parentId || null,
-//     });
-
-//     return res.status(201).json(newComment);
-//   } catch (error) {
-//     return res
-//       .status(500)
-//       .json({ message: "Error submitting comment", error: error.message });
-//   }
-// });
-
-// // GET /api/comments/post/:postId
-// app.get("/api/comments/post/:postId", async (req, res) => {
-//   try {
-//     const { postId } = req.params;
-
-//     // Fetch all comments belonging to the post
-//     const postComments = await Comment.find({ postId })
-//       .sort({ createdAt: -1 })
-//       .lean();
-
-//     const totalCount = postComments.length;
-//     const parentComments = [];
-//     const repliesMap = {};
-
-//     postComments.forEach((c) => {
-//       if (!c.parentId) {
-//         parentComments.push({ ...c, replies: [] });
-//       } else {
-//         const pId = c.parentId.toString();
-//         if (!repliesMap[pId]) repliesMap[pId] = [];
-//         repliesMap[pId].push(c);
-//       }
-//     });
-
-//     const structuredComments = parentComments.map((parent) => ({
-//       ...parent,
-//       replies: repliesMap[parent._id.toString()] || [],
-//     }));
-
-//     return res.status(200).json({
-//       success: true,
-//       totalCount,
-//       comments: structuredComments,
-//     });
-//   } catch (error) {
-//     return res
-//       .status(500)
-//       .json({ message: "Error fetching comments", error: error.message });
-//   }
-// });
-
-// POST /api/comments
-// app.post("/api/comments", async (req, res) => {
-//   try {
-//     const { postId, userId, content, parentId, username } = req.body;
-
-//     if (!postId || !userId || !content?.trim() || !username?.trim()) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "postId, userId, content, and username are required fields.",
-//       });
-//     }
-
-//     // 1. Fetch parent post to check language context
-//     const post = await Post.findById(postId).lean();
-//     if (!post) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Post not found." });
-//     }
-
-//     // 2. Fetch corresponding profile details for this user and language
-//     const profile = await mongoose
-//       .model("PersonalDetails")
-//       .findOne({
-//         userId: new mongoose.Types.ObjectId(userId),
-//         language: post.language,
-//       })
-//       .lean();
-
-//     // 3. Create comment
-//     const newComment = await Comment.create({
-//       postId,
-//       userId,
-//       username,
-//       content: content.trim(),
-//       parentId: parentId || null,
-//     });
-
-//     // 4. Return new comment enriched with user details
-//     return res.status(201).json({
-//       ...newComment.toObject(),
-//       userId: {
-//         _id: userId,
-//         username,
-//         profileImage: profile?.profileImage || "",
-//       },
-//     });
-//   } catch (error) {
-//     return res
-//       .status(500)
-//       .json({ message: "Error submitting comment", error: error.message });
-//   }
-// });
-
 app.post("/api/comments", async (req, res) => {
   try {
     const { postId, userId, content, parentId, username, language } = req.body;
@@ -1233,7 +1110,7 @@ app.get("/api/comments/post/:postId", async (req, res) => {
           },
         },
       },
-      { $sort: { createdAt: -1 } },
+      { $sort: { createdAt: 1 } },
     ]);
 
     // 3. Organize into parent comments and nested replies
