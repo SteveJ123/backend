@@ -9,6 +9,9 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
 // __dirname is not available directly in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,14 +70,17 @@ app.use(
         return callback(null, false);
       }
     },
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
     allowedHeaders: [
       "Content-Type",
       "Authorization",
       "x-language",
       "X-Language",
       "Accept",
+      "*",
     ],
+    AllowedOrigins: ["*"],
+    ExposeHeaders: [],
     credentials: true,
     optionsSuccessStatus: 200, // Fixes issues with legacy browsers/proxies
   }),
@@ -86,6 +92,34 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Connect to MongoDB Atlas
 connectDB();
+
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+/**
+ * Generates a presigned PUT URL for client-side direct S3 uploads
+ */
+export const generateUploadUrl = async (fileType, folder = "media") => {
+  const extension = fileType.split("/")[1] || "bin";
+  const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${extension}`;
+
+  const command = new PutObjectCommand({
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: fileName,
+    ContentType: fileType,
+  });
+
+  // URL expires in 5 minutes (300 seconds)
+  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+  const fileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
+
+  return { uploadUrl, fileUrl, fileName };
+};
 
 app.post("/api/register", async (req, res) => {
   try {
@@ -4855,6 +4889,35 @@ app.get("/api/admin-profile", async (req, res) => {
       message: "Error fetching admin profile",
       error: error.message,
     });
+  }
+});
+
+app.post("/api/media/upload-url", async (req, res) => {
+  try {
+    const { fileType, folder } = req.body;
+    // fileType ex: 'image/jpeg', 'video/mp4', 'audio/mpeg'
+
+    if (!fileType) {
+      return res
+        .status(400)
+        .json({ success: false, message: "fileType is required" });
+    }
+
+    const { uploadUrl, fileUrl } = await generateUploadUrl(
+      fileType,
+      folder || "uploads",
+    );
+
+    return res.status(200).json({
+      success: true,
+      uploadUrl, // Used by Angular to PUT the file directly to S3
+      fileUrl, // Saved to MySQL/MongoDB database
+    });
+  } catch (error) {
+    console.error("S3 Presigned URL error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to generate upload URL" });
   }
 });
 
