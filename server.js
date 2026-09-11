@@ -2601,10 +2601,26 @@ app.post("/api/complete-today", async (req, res) => {
   // Format current server date to YYYY-MM-DD
   // const todayStr = new Date().toISOString().split("T")[0];
   // Format current date to YYYY-MM-DD using Local Server Time zone
+  // const now = new Date();
+  // const year = now.getFullYear();
+  // const month = String(now.getMonth() + 1).padStart(2, "0");
+  // const day = String(now.getDate()).padStart(2, "0");
+  // const todayStr = `${year}-${month}-${day}`;
+
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+
+  // Extract YYYY, MM, DD relative to Asia/Kolkata
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+
+  const year = parts.find((p) => p.type === "year").value;
+  const month = parts.find((p) => p.type === "month").value;
+  const day = parts.find((p) => p.type === "day").value;
+
   const todayStr = `${year}-${month}-${day}`;
 
   try {
