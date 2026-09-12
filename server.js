@@ -3320,9 +3320,116 @@ app.get("/api/admin-users-tracker", async (req, res) => {
 // });
 
 // POST /api/admin-posts
-app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
+// app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
+//   try {
+//     const { userId, content, tagIds, fileTypes, targetLanguage } = req.body;
+
+//     if (!userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId is required to create a post.",
+//       });
+//     }
+
+//     if (!mongoose.Types.ObjectId.isValid(userId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid userId format provided.",
+//       });
+//     }
+
+//     // 1. Fetch Author (Admin)
+//     let author = await User.findById(userId);
+//     if (!author) {
+//       author = await User.findOne({ role: "admin" });
+//     }
+//     if (!author) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Post author not found in database.",
+//       });
+//     }
+
+//     // 2. Determine target language for the post
+//     const postLanguage = targetLanguage || author.language || "English";
+
+//     // Safely parse JSON strings sent from FormData
+//     let parsedTagIds = [];
+//     if (tagIds) {
+//       try {
+//         parsedTagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
+//       } catch (e) {
+//         parsedTagIds = [];
+//       }
+//     }
+
+//     const typesArray = Array.isArray(fileTypes)
+//       ? fileTypes
+//       : fileTypes
+//         ? [fileTypes]
+//         : [];
+
+//     const mediaFiles = (req.files || []).map((file, index) => ({
+//       filename: file.filename,
+//       path: file.path,
+//       mimetype: file.mimetype,
+//       mediaType: typesArray[index] || "file",
+//     }));
+
+//     // 3. Save AdminPost with designated language
+//     const newPost = new AdminPost({
+//       userId: author._id,
+//       content,
+//       language: postLanguage,
+//       tagIds: parsedTagIds,
+//       courseType: author.courseType,
+//       mediaFiles,
+//     });
+
+//     await newPost.save();
+
+//     // 4. STRICT FILTER: Fetch recipients whose language matches postLanguage
+//     const targetUsers = await User.find({
+//       _id: { $ne: author._id },
+//       language: postLanguage,
+//     }).select("_id");
+
+//     console.log(`Admin Post Created for Stream: ${postLanguage}`);
+//     console.log(`Notifying ${targetUsers.length} ${postLanguage} students.`);
+
+//     // 5. Send notifications to matching students
+//     if (targetUsers.length > 0) {
+//       const notifications = targetUsers.map((user) => ({
+//         recipient: user._id,
+//         sender: author._id,
+//         postId: newPost._id,
+//         postModel: "AdminPost",
+//         postContentSnippet: content ? content.trim() : "Uploaded media post.",
+//         isRead: false,
+//       }));
+
+//       await Notification.insertMany(notifications);
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message: `Admin post published to ${postLanguage} students successfully.`,
+//       data: newPost,
+//     });
+//   } catch (error) {
+//     console.error("Error creating admin post:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: error.message,
+//     });
+//   }
+// });
+
+app.post("/api/admin-posts", async (req, res) => {
   try {
-    const { userId, content, tagIds, fileTypes, targetLanguage } = req.body;
+    const { userId, content, tagIds, fileLink, fileLinks, targetLanguage } =
+      req.body;
 
     if (!userId) {
       return res.status(400).json({
@@ -3353,7 +3460,7 @@ app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
     // 2. Determine target language for the post
     const postLanguage = targetLanguage || author.language || "English";
 
-    // Safely parse JSON strings sent from FormData
+    // Safely parse JSON strings sent from FormData/JSON payload
     let parsedTagIds = [];
     if (tagIds) {
       try {
@@ -3363,23 +3470,26 @@ app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
       }
     }
 
-    const typesArray = Array.isArray(fileTypes)
-      ? fileTypes
-      : fileTypes
-        ? [fileTypes]
+    // 3. Process incoming S3 file URLs (supports single string or array)
+    const rawLinks = fileLinks
+      ? Array.isArray(fileLinks)
+        ? fileLinks
+        : [fileLinks]
+      : fileLink
+        ? [fileLink]
         : [];
 
-    const mediaFiles = (req.files || []).map((file, index) => ({
-      filename: file.filename,
-      path: file.path,
-      mimetype: file.mimetype,
-      mediaType: typesArray[index] || "file",
-    }));
+    const mediaFiles = rawLinks
+      .filter((link) => typeof link === "string" && link.trim() !== "")
+      .map((link) => ({
+        fileLink: link.trim(),
+        mediaType: getMediaTypeFromUrl(link),
+      }));
 
-    // 3. Save AdminPost with designated language
+    // 4. Save AdminPost with designated language and S3 media URLs
     const newPost = new AdminPost({
       userId: author._id,
-      content,
+      content: content || "",
       language: postLanguage,
       tagIds: parsedTagIds,
       courseType: author.courseType,
@@ -3388,7 +3498,7 @@ app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
 
     await newPost.save();
 
-    // 4. STRICT FILTER: Fetch recipients whose language matches postLanguage
+    // 5. STRICT FILTER: Fetch recipients whose language matches postLanguage
     const targetUsers = await User.find({
       _id: { $ne: author._id },
       language: postLanguage,
@@ -3397,7 +3507,7 @@ app.post("/api/admin-posts", upload.array("files"), async (req, res) => {
     console.log(`Admin Post Created for Stream: ${postLanguage}`);
     console.log(`Notifying ${targetUsers.length} ${postLanguage} students.`);
 
-    // 5. Send notifications to matching students
+    // 6. Send notifications to matching students
     if (targetUsers.length > 0) {
       const notifications = targetUsers.map((user) => ({
         recipient: user._id,
@@ -4342,32 +4452,131 @@ app.patch("/api/admin-posts/:postId/like", async (req, res) => {
   }
 });
 
-app.put("/api/admin-posts/:id", upload.array("newFiles"), async (req, res) => {
-  try {
-    const { content, userId, removedMediaIds, targetLanguage, language } =
-      req.body;
-    const post = await AdminPost.findById(req.params.id);
+// app.put("/api/admin-posts/:id", upload.array("newFiles"), async (req, res) => {
+//   try {
+//     const { content, userId, removedMediaIds, targetLanguage, language } =
+//       req.body;
+//     const post = await AdminPost.findById(req.params.id);
 
+//     if (!post) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Post not found" });
+//     }
+
+//     // 1. Author verification
+//     const postUserId = post.userId ? post.userId.toString() : "";
+//     const incomingUserId = userId ? userId.toString() : "";
+
+//     if (!incomingUserId || postUserId !== incomingUserId) {
+//       return res
+//         .status(403)
+//         .json({ success: false, message: "Unauthorized action" });
+//     }
+
+//     // 2. Update text content
+//     if (content !== undefined) post.content = content;
+
+//     // 3. Update language if route or form changed
+//     const newLang = targetLanguage || language;
+//     if (newLang) {
+//       const lower = newLang.toLowerCase();
+//       if (lower === "te" || lower === "telugu") post.language = "Telugu";
+//       if (lower === "en" || lower === "english") post.language = "English";
+//     }
+
+//     // 4. Remove specified media files from disk & DB
+//     if (removedMediaIds) {
+//       let idsToDelete = [];
+//       try {
+//         // Handle array or JSON stringified array from FormData
+//         idsToDelete =
+//           typeof removedMediaIds === "string" && removedMediaIds.startsWith("[")
+//             ? JSON.parse(removedMediaIds)
+//             : Array.isArray(removedMediaIds)
+//               ? removedMediaIds
+//               : [removedMediaIds];
+//       } catch (e) {
+//         idsToDelete = [removedMediaIds];
+//       }
+
+//       post.mediaFiles = post.mediaFiles.filter((file) => {
+//         if (idsToDelete.includes(file._id.toString())) {
+//           const filePath = path.join(process.cwd(), file.path);
+//           if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+//           return false;
+//         }
+//         return true;
+//       });
+//     }
+
+//     // 5. Append new files
+//     if (req.files && req.files.length > 0) {
+//       const uploadedMedia = req.files.map((file) => ({
+//         filename: file.originalname,
+//         path: file.path,
+//         mimetype: file.mimetype,
+//         mediaType: file.mimetype.startsWith("image/")
+//           ? "image"
+//           : file.mimetype.startsWith("video/")
+//             ? "video"
+//             : "audio",
+//       }));
+//       post.mediaFiles.push(...uploadedMedia);
+//     }
+
+//     const updatedPost = await post.save();
+//     return res.status(200).json({ success: true, data: updatedPost });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, error: error.message });
+//   }
+// });
+
+app.put("/api/admin-posts/:id", async (req, res) => {
+  try {
+    const {
+      userId,
+      content,
+      tagIds,
+      fileLink,
+      fileLinks,
+      targetLanguage,
+      language,
+      removedMediaIds,
+    } = req.body;
+
+    // 1. Fetch admin post to update
+    const post = await AdminPost.findById(req.params.id);
     if (!post) {
       return res
         .status(404)
         .json({ success: false, message: "Post not found" });
     }
 
-    // 1. Author verification
-    const postUserId = post.userId ? post.userId.toString() : "";
-    const incomingUserId = userId ? userId.toString() : "";
+    // 2. Fetch editor user details
+    const author = await User.findById(userId);
+    if (!author) {
+      return res.status(404).json({
+        success: false,
+        message: "User making the edit not found in database.",
+      });
+    }
 
-    if (!incomingUserId || postUserId !== incomingUserId) {
+    // 3. Authorization check
+    const isOwner = post.userId
+      ? post.userId.toString() === author._id.toString()
+      : false;
+    const isAdmin = author.role === "admin";
+
+    if (!isOwner && !isAdmin) {
       return res
         .status(403)
         .json({ success: false, message: "Unauthorized action" });
     }
 
-    // 2. Update text content
+    // 4. Update text content & language preferences
     if (content !== undefined) post.content = content;
 
-    // 3. Update language if route or form changed
     const newLang = targetLanguage || language;
     if (newLang) {
       const lower = newLang.toLowerCase();
@@ -4375,52 +4584,151 @@ app.put("/api/admin-posts/:id", upload.array("newFiles"), async (req, res) => {
       if (lower === "en" || lower === "english") post.language = "English";
     }
 
-    // 4. Remove specified media files from disk & DB
+    if (tagIds !== undefined) {
+      try {
+        post.tagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
+      } catch (e) {
+        post.tagIds = [];
+      }
+    }
+
+    // 5. Remove specified media files from AWS S3 Bucket & MongoDB array
     if (removedMediaIds) {
       let idsToDelete = [];
       try {
-        // Handle array or JSON stringified array from FormData
         idsToDelete =
-          typeof removedMediaIds === "string" && removedMediaIds.startsWith("[")
+          typeof removedMediaIds === "string"
             ? JSON.parse(removedMediaIds)
-            : Array.isArray(removedMediaIds)
-              ? removedMediaIds
-              : [removedMediaIds];
+            : removedMediaIds;
       } catch (e) {
-        idsToDelete = [removedMediaIds];
+        idsToDelete = Array.isArray(removedMediaIds)
+          ? removedMediaIds
+          : [removedMediaIds];
       }
 
-      post.mediaFiles = post.mediaFiles.filter((file) => {
-        if (idsToDelete.includes(file._id.toString())) {
-          const filePath = path.join(process.cwd(), file.path);
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-          return false;
+      const formattedIds = idsToDelete.map((id) => id.toString());
+
+      // Filter and delete removed files from AWS S3
+      const updatedMediaFiles = [];
+      for (const file of post.mediaFiles) {
+        if (formattedIds.includes(file._id.toString())) {
+          const s3Key = getS3KeyFromUrl(file.fileLink);
+          if (s3Key) {
+            try {
+              await s3.send(
+                new DeleteObjectCommand({
+                  Bucket: process.env.AWS_BUCKET_NAME,
+                  Key: s3Key,
+                }),
+              );
+              console.log(`Successfully deleted S3 key: ${s3Key}`);
+            } catch (s3Err) {
+              console.error(`Failed to delete S3 key (${s3Key}):`, s3Err);
+            }
+          }
+        } else {
+          updatedMediaFiles.push(file);
         }
-        return true;
-      });
+      }
+
+      post.mediaFiles = updatedMediaFiles;
     }
 
-    // 5. Append new files
-    if (req.files && req.files.length > 0) {
-      const uploadedMedia = req.files.map((file) => ({
-        filename: file.originalname,
-        path: file.path,
-        mimetype: file.mimetype,
-        mediaType: file.mimetype.startsWith("image/")
-          ? "image"
-          : file.mimetype.startsWith("video/")
-            ? "video"
-            : "audio",
+    // 6. Append new S3 media URLs if provided
+    const rawLinks = fileLinks
+      ? Array.isArray(fileLinks)
+        ? fileLinks
+        : [fileLinks]
+      : fileLink
+        ? [fileLink]
+        : [];
+
+    const newUploadedMedia = rawLinks
+      .filter((link) => typeof link === "string" && link.trim() !== "")
+      .map((link) => ({
+        fileLink: link.trim(),
+        mediaType: getMediaTypeFromUrl(link),
       }));
-      post.mediaFiles.push(...uploadedMedia);
+
+    if (newUploadedMedia.length > 0) {
+      post.mediaFiles.push(...newUploadedMedia);
     }
 
     const updatedPost = await post.save();
-    return res.status(200).json({ success: true, data: updatedPost });
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin post updated successfully",
+      data: updatedPost,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    console.error("Error updating admin post:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
   }
 });
+
+// app.delete("/api/admin-posts/:id", async (req, res) => {
+//   try {
+//     // Read userId flexibly regardless of casing
+//     const userId = req.query.userid || req.query.userId;
+//     const { id } = req.params;
+
+//     const post = await AdminPost.findById(id);
+
+//     if (!post) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Post not found" });
+//     }
+
+//     // 1. Authorization check
+//     const postUserId = post.userId ? post.userId.toString() : "";
+//     const incomingUserId = userId ? userId.toString() : "";
+
+//     if (!incomingUserId || postUserId !== incomingUserId) {
+//       return res
+//         .status(403)
+//         .json({ success: false, message: "Unauthorized action" });
+//     }
+
+//     // 2. Delete media files asynchronously
+//     if (post.mediaFiles && post.mediaFiles.length > 0) {
+//       await Promise.all(
+//         post.mediaFiles.map(async (file) => {
+//           if (!file.path) return;
+//           const filePath = path.join(process.cwd(), file.path);
+//           try {
+//             await fs.unlink(filePath);
+//           } catch (fileErr) {
+//             console.warn(
+//               `File cleanup skipped for ${filePath}:`,
+//               fileErr.message,
+//             );
+//           }
+//         }),
+//       );
+//     }
+
+//     // 3. Cascade delete associated comments & notifications
+//     await Promise.all([
+//       AdminPost.findByIdAndDelete(id),
+//       Comment.deleteMany({ postId: id }),
+//       Notification.deleteMany({ postId: id }),
+//     ]);
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Post, media, and related data deleted successfully",
+//     });
+//   } catch (error) {
+//     console.error("Error deleting post:", error);
+//     return res.status(500).json({ success: false, error: error.message });
+//   }
+// });
 
 app.delete("/api/admin-posts/:id", async (req, res) => {
   try {
@@ -4446,25 +4754,30 @@ app.delete("/api/admin-posts/:id", async (req, res) => {
         .json({ success: false, message: "Unauthorized action" });
     }
 
-    // 2. Delete media files asynchronously
+    // 2. Delete attached media files from AWS S3
     if (post.mediaFiles && post.mediaFiles.length > 0) {
-      await Promise.all(
-        post.mediaFiles.map(async (file) => {
-          if (!file.path) return;
-          const filePath = path.join(process.cwd(), file.path);
+      for (const file of post.mediaFiles) {
+        // Handle fileLink, url, or legacy path schema variants
+        const fileUrl = file.fileLink || file.url || file.path;
+        const s3Key = getS3KeyFromUrl(fileUrl);
+
+        if (s3Key) {
           try {
-            await fs.unlink(filePath);
-          } catch (fileErr) {
-            console.warn(
-              `File cleanup skipped for ${filePath}:`,
-              fileErr.message,
+            await s3.send(
+              new DeleteObjectCommand({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Key: s3Key,
+              }),
             );
+            console.log(`Successfully deleted S3 key: ${s3Key}`);
+          } catch (s3Err) {
+            console.error(`Failed to delete S3 key (${s3Key}):`, s3Err);
           }
-        }),
-      );
+        }
+      }
     }
 
-    // 3. Cascade delete associated comments & notifications
+    // 3. Cascade delete associated post document, comments & notifications
     await Promise.all([
       AdminPost.findByIdAndDelete(id),
       Comment.deleteMany({ postId: id }),
@@ -4473,10 +4786,11 @@ app.delete("/api/admin-posts/:id", async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Post, media, and related data deleted successfully",
+      message:
+        "Admin post, S3 media, comments, and notifications deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting post:", error);
+    console.error("Error deleting admin post:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });

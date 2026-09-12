@@ -6,12 +6,11 @@ const AdminPostSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      index: true,
     },
     content: {
       type: String,
+      required: true,
       trim: true,
-      default: "",
     },
     // CRITICAL: Restricts admin posts to English or Telugu streams
     language: {
@@ -22,14 +21,14 @@ const AdminPostSchema = new mongoose.Schema(
     },
     tagIds: [{ type: String }],
     courseType: [{ type: String }],
-    // Updated media storage for S3 URLs
     mediaFiles: [
       {
-        fileLink: { type: String, required: true },
+        filename: String,
+        path: String,
+        mimetype: String,
         mediaType: {
           type: String,
           enum: ["image", "video", "audio", "file"],
-          default: "file",
         },
       },
     ],
@@ -40,7 +39,6 @@ const AdminPostSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// Compound index for fast language timeline lookups
 AdminPostSchema.index({ language: 1, createdAt: -1 });
 
 const AdminPost = mongoose.model("AdminPost", AdminPostSchema);
