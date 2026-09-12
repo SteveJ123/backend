@@ -6,3 +6,6 @@ uploads/*
 
 # Keep the uploads folder tracked in Git
 !uploads/.gitkeep
+
+.env".env" 
+".env" 
