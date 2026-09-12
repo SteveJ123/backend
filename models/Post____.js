@@ -10,9 +10,11 @@ const PostSchema = new mongoose.Schema(
     },
     content: {
       type: String,
+      required: false, // Fixed: Made optional to support media-only posts
       trim: true,
       default: "",
     },
+    // Restricts posts to English or Telugu streams
     language: {
       type: String,
       enum: ["English", "Telugu"],
@@ -21,13 +23,14 @@ const PostSchema = new mongoose.Schema(
     },
     tagIds: [{ type: String }],
     courseType: {
-      type: String,
+      type: String, // Fixed: Matched single string type with User schema
       enum: ["Face Yoga", "Face Yoga + Raj Yoga"],
     },
-    // Updated media storage for S3 URLs
     mediaFiles: [
       {
-        fileLink: { type: String, required: true },
+        filename: String,
+        path: String,
+        mimetype: String,
         mediaType: {
           type: String,
           enum: ["image", "video", "audio", "file"],

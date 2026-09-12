@@ -9,7 +9,11 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // __dirname is not available directly in ES modules
@@ -39,11 +43,16 @@ import AdminPost from "./models/AdminPost.js";
 import SupportTeam from "./models/SupportTeam.js";
 import AdminComment from "./models/AdminComment.js";
 
-import upload from "./middleware/upload.js";
+// import upload from "./middleware/upload.js";
+
+// const { Upload } = require("@aws-sdk/lib-storage");
+import { Upload } from "@aws-sdk/lib-storage";
+import multer from "multer";
 // Ensure 'uploads' directory exists
-if (!fs.existsSync("./uploads")) {
-  fs.mkdirSync("./uploads");
-}
+// if (!fs.existsSync("./uploads")) {
+//   fs.mkdirSync("./uploads");
+// }
+const upload = multer();
 
 const app = express();
 
@@ -88,18 +97,20 @@ app.use(
 // 3. Handle Preflight OPTIONS Requests explicitly
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Connect to MongoDB Atlas
 connectDB();
 
-const s3Client = new S3Client({
+const s3 = new S3Client({
   region: process.env.AWS_REGION,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
 });
+
+const bucketName = process.env.AWS_BUCKET_NAME;
 
 /**
  * Generates a presigned PUT URL for client-side direct S3 uploads
@@ -440,116 +451,124 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-app.post("/api/posts", upload.array("files"), async (req, res) => {
-  try {
-    const { userId, content, tagIds, fileTypes, targetLanguage } = req.body;
+const getMediaTypeFromUrl = (url = "") => {
+  const cleanUrl = url.split("?")[0].toLowerCase(); // Strip query params if any
+  if (/\.(jpg|jpeg|png|webp|gif|svg)$/.test(cleanUrl)) return "image";
+  if (/\.(mp4|webm|ogg|mov|mkv)$/.test(cleanUrl)) return "video";
+  if (/\.(mp3|wav|aac|m4a|flac)$/.test(cleanUrl)) return "audio";
+  return "file";
+};
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "userId is required to create a post.",
-      });
-    }
+// app.post("/api/posts", upload.array("files"), async (req, res) => {
+//   try {
+//     const { userId, content, tagIds, fileTypes, targetLanguage } = req.body;
 
-    // 1. Fetch the actual user from MongoDB to get accurate role, courseType & language
-    const author = await User.findById(userId);
-    if (!author) {
-      return res.status(404).json({
-        success: false,
-        message: "Post author not found in database.",
-      });
-    }
+//     if (!userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId is required to create a post.",
+//       });
+//     }
 
-    // Determine target post language:
-    // If author is Admin, use the route language sent from frontend (targetLanguage).
-    // If author is standard User, strictly enforce their account language.
-    const postLanguage =
-      author.role === "admin"
-        ? targetLanguage || author.language
-        : author.language;
+//     // 1. Fetch the actual user from MongoDB to get accurate role, courseType & language
+//     const author = await User.findById(userId);
+//     if (!author) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Post author not found in database.",
+//       });
+//     }
 
-    // Safely parse JSON strings sent from Angular FormData
-    let parsedTagIds = [];
-    if (tagIds) {
-      try {
-        parsedTagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
-      } catch (e) {
-        parsedTagIds = [];
-      }
-    }
+//     // Determine target post language:
+//     // If author is Admin, use the route language sent from frontend (targetLanguage).
+//     // If author is standard User, strictly enforce their account language.
+//     const postLanguage =
+//       author.role === "admin"
+//         ? targetLanguage || author.language
+//         : author.language;
 
-    // Normalize fileTypes array
-    const typesArray = Array.isArray(fileTypes)
-      ? fileTypes
-      : fileTypes
-        ? [fileTypes]
-        : [];
+//     // Safely parse JSON strings sent from Angular FormData
+//     let parsedTagIds = [];
+//     if (tagIds) {
+//       try {
+//         parsedTagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
+//       } catch (e) {
+//         parsedTagIds = [];
+//       }
+//     }
 
-    const mediaFiles = (req.files || []).map((file, index) => ({
-      filename: file.filename,
-      path: file.path,
-      mimetype: file.mimetype,
-      mediaType: typesArray[index] || "file",
-    }));
+//     // Normalize fileTypes array
+//     const typesArray = Array.isArray(fileTypes)
+//       ? fileTypes
+//       : fileTypes
+//         ? [fileTypes]
+//         : [];
 
-    // 2. Create the post with language, courseType, and media
-    const newPost = new Post({
-      userId,
-      content,
-      tagIds: parsedTagIds,
-      courseType: author.courseType,
-      language: postLanguage, // <--- Language applied here
-      mediaFiles,
-    });
+//     const mediaFiles = (req.files || []).map((file, index) => ({
+//       filename: file.filename,
+//       path: file.path,
+//       mimetype: file.mimetype,
+//       mediaType: typesArray[index] || "file",
+//     }));
 
-    await newPost.save();
+//     // 2. Create the post with language, courseType, and media
+//     const newPost = new Post({
+//       userId,
+//       content,
+//       tagIds: parsedTagIds,
+//       courseType: author.courseType,
+//       language: postLanguage, // <--- Language applied here
+//       mediaFiles,
+//     });
 
-    // 3. Build target recipients query matched strictly by POST LANGUAGE
-    // Exclude author AND filter by matching language
-    const targetUsers = await User.find({
-      _id: { $ne: author._id },
-      $or: [
-        {
-          language: postLanguage, // <--- Only notify users matching this post's language
-        },
-        {
-          role: "admin",
-        },
-      ],
-    }).select("_id");
+//     await newPost.save();
 
-    console.log(`Author ID: ${author._id} (${author.role})`);
-    console.log(`Post Language: ${postLanguage}`);
-    console.log(`Target Recipients Count: ${targetUsers.length}`);
+//     // 3. Build target recipients query matched strictly by POST LANGUAGE
+//     // Exclude author AND filter by matching language
+//     const targetUsers = await User.find({
+//       _id: { $ne: author._id },
+//       $or: [
+//         {
+//           language: postLanguage, // <--- Only notify users matching this post's language
+//         },
+//         {
+//           role: "admin",
+//         },
+//       ],
+//     }).select("_id");
 
-    // 4. Bulk insert notification records for relevant recipients
-    if (targetUsers.length > 0) {
-      const notifications = targetUsers.map((user) => ({
-        recipient: user._id,
-        sender: author._id,
-        postId: newPost._id,
-        postModel: "Post",
-        postContentSnippet: content ? content.trim() : "Uploaded media post.",
-        isRead: false,
-      }));
+//     console.log(`Author ID: ${author._id} (${author.role})`);
+//     console.log(`Post Language: ${postLanguage}`);
+//     console.log(`Target Recipients Count: ${targetUsers.length}`);
 
-      await Notification.insertMany(notifications);
-    }
+//     // 4. Bulk insert notification records for relevant recipients
+//     if (targetUsers.length > 0) {
+//       const notifications = targetUsers.map((user) => ({
+//         recipient: user._id,
+//         sender: author._id,
+//         postId: newPost._id,
+//         postModel: "Post",
+//         postContentSnippet: content ? content.trim() : "Uploaded media post.",
+//         isRead: false,
+//       }));
 
-    return res.status(201).json({
-      success: true,
-      message: "Post created and notifications queued successfully.",
-      data: newPost,
-    });
-  } catch (error) {
-    console.error("Error creating post:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server Error",
-      error: error.message,
-    });
-  }
-});
+//       await Notification.insertMany(notifications);
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message: "Post created and notifications queued successfully.",
+//       data: newPost,
+//     });
+//   } catch (error) {
+//     console.error("Error creating post:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: error.message,
+//     });
+//   }
+// });
 
 // app.get("/api/posts", async (req, res) => {
 //   try {
@@ -1075,6 +1094,106 @@ app.post("/api/posts", upload.array("files"), async (req, res) => {
 //     return res.status(500).json({ success: false, message: error.message });
 //   }
 // });
+
+app.post("/api/posts", async (req, res) => {
+  try {
+    const { userId, content, tagIds, fileLink, fileLinks, targetLanguage } =
+      req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required to create a post.",
+      });
+    }
+
+    // 1. Fetch author details to enforce language & course type rules
+    const author = await User.findById(userId);
+    if (!author) {
+      return res.status(404).json({
+        success: false,
+        message: "Post author not found in database.",
+      });
+    }
+
+    // Determine target post language:
+    const postLanguage =
+      author.role === "admin"
+        ? targetLanguage || author.language
+        : author.language;
+
+    // Safely parse JSON strings sent from Angular FormData/JSON
+    let parsedTagIds = [];
+    if (tagIds) {
+      try {
+        parsedTagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
+      } catch (e) {
+        parsedTagIds = [];
+      }
+    }
+
+    // 2. Process incoming S3 file URLs (supports single string or array)
+    const rawLinks = fileLinks
+      ? Array.isArray(fileLinks)
+        ? fileLinks
+        : [fileLinks]
+      : fileLink
+        ? [fileLink]
+        : [];
+
+    const mediaFiles = rawLinks
+      .filter((link) => typeof link === "string" && link.trim() !== "")
+      .map((link) => ({
+        fileLink: link.trim(),
+        mediaType: getMediaTypeFromUrl(link),
+      }));
+
+    // 3. Create the post
+    const newPost = new Post({
+      userId,
+      content: content || "",
+      tagIds: parsedTagIds,
+      courseType: author.courseType,
+      language: postLanguage,
+      mediaFiles,
+    });
+
+    await newPost.save();
+
+    // 4. Build target recipients query matched strictly by POST LANGUAGE
+    const targetUsers = await User.find({
+      _id: { $ne: author._id },
+      $or: [{ language: postLanguage }, { role: "admin" }],
+    }).select("_id");
+
+    // 5. Bulk insert notification records
+    if (targetUsers.length > 0) {
+      const notifications = targetUsers.map((user) => ({
+        recipient: user._id,
+        sender: author._id,
+        postId: newPost._id,
+        postModel: "Post",
+        postContentSnippet: content ? content.trim() : "Uploaded media post.",
+        isRead: false,
+      }));
+
+      await Notification.insertMany(notifications);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Post created and notifications queued successfully.",
+      data: newPost,
+    });
+  } catch (error) {
+    console.error("Error creating post:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+});
 
 app.get("/api/posts", async (req, res) => {
   try {
@@ -2152,13 +2271,158 @@ app.patch("/api/notifications/:id/read", async (req, res) => {
 //   }
 // });
 
-app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
+// app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
+//   try {
+//     const {
+//       userId,
+//       content,
+//       tagIds,
+//       fileTypes,
+//       targetLanguage,
+//       removedMediaIds,
+//     } = req.body;
+
+//     // 1. Fetch post to update
+//     const post = await Post.findById(req.params.id);
+//     if (!post) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Post not found" });
+//     }
+
+//     // 2. Fetch editor user to verify identity, role, and language settings
+//     const author = await User.findById(userId);
+//     if (!author) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User making the edit not found in database.",
+//       });
+//     }
+
+//     // 3. Authorization check: Ensure only post author or admin can update
+//     const isOwner = post.userId
+//       ? post.userId.toString() === author._id.toString()
+//       : false;
+//     const isAdmin = author.role === "admin";
+
+//     if (!isOwner && !isAdmin) {
+//       return res
+//         .status(403)
+//         .json({ success: false, message: "Unauthorized action" });
+//     }
+
+//     // 4. Update core content fields
+//     if (content !== undefined) post.content = content;
+
+//     // Determine target post language update
+//     if (isAdmin && targetLanguage) {
+//       post.language = targetLanguage;
+//     } else if (author.language) {
+//       post.language = author.language;
+//     }
+
+//     // Safely parse JSON tagIds sent from Angular FormData
+//     if (tagIds !== undefined) {
+//       try {
+//         post.tagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
+//       } catch (e) {
+//         post.tagIds = [];
+//       }
+//     }
+
+//     // 5. Delete removed media files from disk & document array
+//     if (removedMediaIds) {
+//       let idsToDelete = [];
+//       try {
+//         idsToDelete =
+//           typeof removedMediaIds === "string"
+//             ? JSON.parse(removedMediaIds)
+//             : removedMediaIds;
+//       } catch (e) {
+//         idsToDelete = Array.isArray(removedMediaIds)
+//           ? removedMediaIds
+//           : [removedMediaIds];
+//       }
+
+//       post.mediaFiles = post.mediaFiles.filter((file) => {
+//         if (idsToDelete.includes(file._id.toString())) {
+//           const filePath = path.join(process.cwd(), file.path);
+//           if (fs.existsSync(filePath)) {
+//             try {
+//               fs.unlinkSync(filePath);
+//             } catch (err) {
+//               console.error(`Failed to delete file at ${filePath}:`, err);
+//             }
+//           }
+//           return false;
+//         }
+//         return true;
+//       });
+//     }
+
+//     // 6. Process newly uploaded media files with custom fileTypes
+//     if (req.files && req.files.length > 0) {
+//       const typesArray = Array.isArray(fileTypes)
+//         ? fileTypes
+//         : fileTypes
+//           ? [fileTypes]
+//           : [];
+
+//       const newUploadedMedia = req.files.map((file, index) => ({
+//         filename: file.filename,
+//         path: file.path,
+//         mimetype: file.mimetype,
+//         mediaType:
+//           typesArray[index] ||
+//           (file.mimetype.startsWith("image/")
+//             ? "image"
+//             : file.mimetype.startsWith("video/")
+//               ? "video"
+//               : "audio"),
+//       }));
+
+//       post.mediaFiles.push(...newUploadedMedia);
+//     }
+
+//     const updatedPost = await post.save();
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Post updated successfully",
+//       data: updatedPost,
+//     });
+//   } catch (error) {
+//     console.error("Error updating post:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: error.message,
+//     });
+//   }
+// });
+
+/**
+ * Helper utility to extract S3 Object Key from a Full S3 URL
+ */
+const getS3KeyFromUrl = (fileUrl) => {
+  try {
+    const parsedUrl = new URL(fileUrl);
+    // Remove leading slash to get the S3 key
+    return decodeURIComponent(parsedUrl.pathname.substring(1));
+  } catch (error) {
+    console.error("Error parsing S3 URL:", error);
+    return null;
+  }
+};
+
+app.put("/api/posts/:id", async (req, res) => {
   try {
     const {
       userId,
       content,
       tagIds,
-      fileTypes,
+      fileLink,
+      fileLinks,
       targetLanguage,
       removedMediaIds,
     } = req.body;
@@ -2171,7 +2435,7 @@ app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
         .json({ success: false, message: "Post not found" });
     }
 
-    // 2. Fetch editor user to verify identity, role, and language settings
+    // 2. Fetch editor user details
     const author = await User.findById(userId);
     if (!author) {
       return res.status(404).json({
@@ -2180,7 +2444,7 @@ app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
       });
     }
 
-    // 3. Authorization check: Ensure only post author or admin can update
+    // 3. Authorization check
     const isOwner = post.userId
       ? post.userId.toString() === author._id.toString()
       : false;
@@ -2192,17 +2456,15 @@ app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
         .json({ success: false, message: "Unauthorized action" });
     }
 
-    // 4. Update core content fields
+    // 4. Update text content & language preferences
     if (content !== undefined) post.content = content;
 
-    // Determine target post language update
     if (isAdmin && targetLanguage) {
       post.language = targetLanguage;
     } else if (author.language) {
       post.language = author.language;
     }
 
-    // Safely parse JSON tagIds sent from Angular FormData
     if (tagIds !== undefined) {
       try {
         post.tagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
@@ -2211,7 +2473,7 @@ app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
       }
     }
 
-    // 5. Delete removed media files from disk & document array
+    // 5. Remove media files from AWS S3 Bucket & MongoDB array
     if (removedMediaIds) {
       let idsToDelete = [];
       try {
@@ -2225,43 +2487,53 @@ app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
           : [removedMediaIds];
       }
 
-      post.mediaFiles = post.mediaFiles.filter((file) => {
-        if (idsToDelete.includes(file._id.toString())) {
-          const filePath = path.join(process.cwd(), file.path);
-          if (fs.existsSync(filePath)) {
+      // Convert String IDs to string format for comparison
+      const formattedIds = idsToDelete.map((id) => id.toString());
+
+      // Filter and delete removed files from AWS S3
+      const updatedMediaFiles = [];
+      for (const file of post.mediaFiles) {
+        if (formattedIds.includes(file._id.toString())) {
+          // Delete file from AWS S3 bucket
+          const s3Key = getS3KeyFromUrl(file.fileLink);
+          if (s3Key) {
             try {
-              fs.unlinkSync(filePath);
-            } catch (err) {
-              console.error(`Failed to delete file at ${filePath}:`, err);
+              await s3.send(
+                new DeleteObjectCommand({
+                  Bucket: process.env.AWS_BUCKET_NAME,
+                  Key: s3Key,
+                }),
+              );
+              console.log(`Successfully deleted S3 key: ${s3Key}`);
+            } catch (s3Err) {
+              console.error(`Failed to delete S3 key (${s3Key}):`, s3Err);
             }
           }
-          return false;
+        } else {
+          updatedMediaFiles.push(file);
         }
-        return true;
-      });
+      }
+
+      post.mediaFiles = updatedMediaFiles;
     }
 
-    // 6. Process newly uploaded media files with custom fileTypes
-    if (req.files && req.files.length > 0) {
-      const typesArray = Array.isArray(fileTypes)
-        ? fileTypes
-        : fileTypes
-          ? [fileTypes]
-          : [];
+    // 6. Append new S3 media URLs if provided
+    const rawLinks = fileLinks
+      ? Array.isArray(fileLinks)
+        ? fileLinks
+        : [fileLinks]
+      : fileLink
+        ? [fileLink]
+        : [];
 
-      const newUploadedMedia = req.files.map((file, index) => ({
-        filename: file.filename,
-        path: file.path,
-        mimetype: file.mimetype,
-        mediaType:
-          typesArray[index] ||
-          (file.mimetype.startsWith("image/")
-            ? "image"
-            : file.mimetype.startsWith("video/")
-              ? "video"
-              : "audio"),
+    const newUploadedMedia = rawLinks
+      .filter((link) => typeof link === "string" && link.trim() !== "")
+      .map((link) => ({
+        fileLink: link.trim(),
+        mediaType: getMediaTypeFromUrl(link),
       }));
 
+    if (newUploadedMedia.length > 0) {
       post.mediaFiles.push(...newUploadedMedia);
     }
 
@@ -4934,6 +5206,47 @@ app.post("/api/media/upload-url", async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: "Failed to generate upload URL" });
+  }
+});
+
+// const upload = multer();
+
+// Receive Large file and write in chunks to S3 bucket
+app.post("/api/upload_parallel", upload.single("file"), (req, res) => {
+  const file = req.file;
+  // params for s3 upload
+  const params = {
+    Bucket: bucketName,
+    Key: `${Date.now().toString()}_${file.originalname}`,
+    Body: file.buffer,
+  };
+
+  try {
+    // upload file to s3 parallelly in chunks
+    // it supports min 5MB of file size
+    const uploadParallel = new Upload({
+      client: s3,
+      queueSize: 4, // optional concurrency configuration
+      partSize: 5542880, // optional size of each part
+      leavePartsOnError: false, // optional manually handle dropped parts
+      params,
+    });
+
+    // checking progress of upload
+    uploadParallel.on("httpUploadProgress", (progress) => {
+      console.log(progress);
+    });
+
+    // after completion of upload
+    uploadParallel.done().then((data) => {
+      console.log("upload completed!", { data });
+      return res.json({ success: true, data: data.Location });
+    });
+  } catch (error) {
+    res.send({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
