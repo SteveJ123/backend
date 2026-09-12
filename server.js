@@ -2642,12 +2642,10 @@ app.delete("/api/posts/:id", async (req, res) => {
     // Delete post document from MongoDB
     await Post.findByIdAndDelete(req.params.id);
 
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Post and S3 media deleted successfully",
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Post and S3 media deleted successfully",
+    });
   } catch (error) {
     console.error("Error deleting post:", error);
     return res.status(500).json({ success: false, error: error.message });
@@ -5272,38 +5270,91 @@ app.post("/api/media/upload-url", async (req, res) => {
 // const upload = multer();
 
 // Receive Large file and write in chunks to S3 bucket
-app.post("/api/upload_parallel", upload.single("file"), (req, res) => {
+// app.post("/api/upload_parallel", upload.single("file"), (req, res) => {
+//   const file = req.file;
+//   // params for s3 upload
+//   const params = {
+//     Bucket: bucketName,
+//     Key: `${Date.now().toString()}_${file.originalname}`,
+//     Body: file.buffer,
+//   };
+
+//   try {
+//     // upload file to s3 parallelly in chunks
+//     // it supports min 5MB of file size
+//     const uploadParallel = new Upload({
+//       client: s3,
+//       queueSize: 4, // optional concurrency configuration
+//       partSize: 5542880, // optional size of each part
+//       leavePartsOnError: false, // optional manually handle dropped parts
+//       params,
+//     });
+
+//     // checking progress of upload
+//     uploadParallel.on("httpUploadProgress", (progress) => {
+//       console.log(progress);
+//     });
+
+//     // after completion of upload
+//     uploadParallel.done().then((data) => {
+//       console.log("upload completed!", { data });
+//       return res.json({ success: true, data: data.Location });
+//     });
+//   } catch (error) {
+//     res.send({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// });
+
+app.post("/api/upload_parallel", upload.single("file"), async (req, res) => {
   const file = req.file;
-  // params for s3 upload
+
+  if (!file) {
+    return res
+      .status(400)
+      .json({ success: false, message: "No file provided" });
+  }
+
+  // Determine folder based on MIME type
+  let folder = "others";
+  if (file.mimetype.startsWith("image/")) {
+    folder = "images";
+  } else if (file.mimetype.startsWith("video/")) {
+    folder = "videos";
+  } else if (file.mimetype.startsWith("audio/")) {
+    folder = "audios";
+  }
+
+  // Construct Key with folder prefix
   const params = {
     Bucket: bucketName,
-    Key: `${Date.now().toString()}_${file.originalname}`,
+    Key: `${folder}/${Date.now().toString()}_${file.originalname}`,
     Body: file.buffer,
+    ContentType: file.mimetype, // Recommended: preserves file viewer support in browser
   };
 
   try {
-    // upload file to s3 parallelly in chunks
-    // it supports min 5MB of file size
     const uploadParallel = new Upload({
       client: s3,
-      queueSize: 4, // optional concurrency configuration
-      partSize: 5542880, // optional size of each part
-      leavePartsOnError: false, // optional manually handle dropped parts
+      queueSize: 4,
+      partSize: 5542880,
+      leavePartsOnError: false,
       params,
     });
 
-    // checking progress of upload
     uploadParallel.on("httpUploadProgress", (progress) => {
       console.log(progress);
     });
 
-    // after completion of upload
-    uploadParallel.done().then((data) => {
-      console.log("upload completed!", { data });
-      return res.json({ success: true, data: data.Location });
-    });
+    const data = await uploadParallel.done();
+    console.log("upload completed!", { data });
+
+    // Verify upload success by checking returned S3 Location URL
+    return res.json({ success: true, data: data.Location });
   } catch (error) {
-    res.send({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
