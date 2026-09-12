@@ -2555,10 +2555,49 @@ app.put("/api/posts/:id", async (req, res) => {
 });
 
 // DELETE POST & ALL ASSOCIATED MEDIA
+// app.delete("/api/posts/:id", async (req, res) => {
+//   try {
+//     // Read userId from query params (handles both req.query.userId and req.query.userid)
+//     const userId = req.query.userid;
+//     const post = await Post.findById(req.params.id);
+
+//     if (!post) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Post not found" });
+//     }
+
+//     // Compare string representations of the user IDs
+//     const postUserId = post.userId ? post.userId.toString() : "";
+//     const incomingUserId = userId ? userId.toString() : "";
+
+//     if (!incomingUserId || postUserId !== incomingUserId) {
+//       return res
+//         .status(403)
+//         .json({ success: false, message: "Unauthorized action" });
+//     }
+
+//     // Delete attached media files from disk
+//     if (post.mediaFiles && post.mediaFiles.length > 0) {
+//       post.mediaFiles.forEach((file) => {
+//         const filePath = path.join(process.cwd(), file.path);
+//         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+//       });
+//     }
+
+//     await Post.findByIdAndDelete(req.params.id);
+//     return res
+//       .status(200)
+//       .json({ success: true, message: "Post and media deleted" });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, error: error.message });
+//   }
+// });
+
 app.delete("/api/posts/:id", async (req, res) => {
   try {
-    // Read userId from query params (handles both req.query.userId and req.query.userid)
-    const userId = req.query.userid;
+    // Read userId from query params
+    const userId = req.query.userid || req.query.userId;
     const post = await Post.findById(req.params.id);
 
     if (!post) {
@@ -2577,19 +2616,40 @@ app.delete("/api/posts/:id", async (req, res) => {
         .json({ success: false, message: "Unauthorized action" });
     }
 
-    // Delete attached media files from disk
+    // Delete attached media files from AWS S3
     if (post.mediaFiles && post.mediaFiles.length > 0) {
-      post.mediaFiles.forEach((file) => {
-        const filePath = path.join(process.cwd(), file.path);
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      });
+      for (const file of post.mediaFiles) {
+        // Handle both file.fileLink and file.url schema variants
+        const fileUrl = file.fileLink || file.url || file.path;
+        const s3Key = getS3KeyFromUrl(fileUrl);
+
+        if (s3Key) {
+          try {
+            await s3.send(
+              new DeleteObjectCommand({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Key: s3Key,
+              }),
+            );
+            console.log(`Successfully deleted S3 key: ${s3Key}`);
+          } catch (s3Err) {
+            console.error(`Failed to delete S3 key (${s3Key}):`, s3Err);
+          }
+        }
+      }
     }
 
+    // Delete post document from MongoDB
     await Post.findByIdAndDelete(req.params.id);
+
     return res
       .status(200)
-      .json({ success: true, message: "Post and media deleted" });
+      .json({
+        success: true,
+        message: "Post and S3 media deleted successfully",
+      });
   } catch (error) {
+    console.error("Error deleting post:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 });
