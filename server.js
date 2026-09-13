@@ -29,19 +29,19 @@ dotenv.config({
 });
 
 // Import database connection
-import db from "./config/db.js";
-// import Post from "./models/Post.js";
-// import User from "./models/User.js";
-// import Comment from "./models/Comment.js";
-// import Course from "./models/Course.js";
-// import Notification from "./models/Notification.js";
+import connectDB from "./config/db.js";
+import Post from "./models/Post.js";
+import User from "./models/User.js";
+import Comment from "./models/Comment.js";
+import Course from "./models/Course.js";
+import Notification from "./models/Notification.js";
 import courseRoutes from "./routes/courseDetails.js"; // Adjust path according to your folder structure
-// import LiveSession from "./models/LiveSession.js";
-// import Product from "./models/Product.js";
-// import PersonalDetails from "./models/PersonalDetails.js";
-// import AdminPost from "./models/AdminPost.js";
-// import SupportTeam from "./models/SupportTeam.js";
-// import AdminComment from "./models/AdminComment.js";
+import LiveSession from "./models/LiveSession.js";
+import Product from "./models/Product.js";
+import PersonalDetails from "./models/PersonalDetails.js";
+import AdminPost from "./models/AdminPost.js";
+import SupportTeam from "./models/SupportTeam.js";
+import AdminComment from "./models/AdminComment.js";
 
 // import upload from "./middleware/upload.js";
 
@@ -100,7 +100,7 @@ app.use(express.urlencoded({ extended: true }));
 // app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Connect to MongoDB Atlas
-// connectDB();
+connectDB();
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
@@ -132,82 +132,20 @@ export const generateUploadUrl = async (fileType, folder = "media") => {
   return { uploadUrl, fileUrl, fileName };
 };
 
-// app.post("/api/register", async (req, res) => {
-//   try {
-//     const { username, mobile, password, courseType, language, role } = req.body;
-
-//     // 1. Check if required fields are provided
-//     if (!username || !mobile || !password || !courseType || !language) {
-//       return res
-//         .status(400)
-//         .json({ message: "All required fields must be provided." });
-//     }
-
-//     // 2. Check if user with mobile already exists
-//     const existingUser = await User.findOne({ mobile });
-//     if (existingUser) {
-//       return res
-//         .status(400)
-//         .json({ message: "Mobile number is already registered." });
-//     }
-
-//     // 3. Hash the password
-//     const salt = await bcrypt.genSalt(10);
-//     const passwordHash = await bcrypt.hash(password, salt);
-
-//     // 4. Create new user document
-//     const newUser = new User({
-//       username,
-//       mobile,
-//       passwordHash,
-//       courseType,
-//       language,
-//       role: role || "user", // Defaults to "user" unless specified
-//     });
-
-//     await newUser.save();
-
-//     const personalDetails = new PersonalDetails({
-//       userId: newUser._id,
-//       name: username, // Maps the registration username to name
-//       language: language, // Matches the language chosen at registration
-//     });
-
-//     await personalDetails.save();
-
-//     res.status(201).json({
-//       message: "User registered successfully",
-//       userId: newUser._id,
-//     });
-//   } catch (error) {
-//     console.error("Registration Error:", error);
-//     res.status(500).json({ message: "Server error during registration." });
-//   }
-// });
-
 app.post("/api/register", async (req, res) => {
-  // Acquire a dedicated connection from the pool for transaction safety
-  const connection = await db.getConnection();
-
   try {
     const { username, mobile, password, courseType, language, role } = req.body;
 
     // 1. Check if required fields are provided
     if (!username || !mobile || !password || !courseType || !language) {
-      connection.release();
       return res
         .status(400)
         .json({ message: "All required fields must be provided." });
     }
 
     // 2. Check if user with mobile already exists
-    const [existingUsers] = await connection.execute(
-      "SELECT id FROM register WHERE mobile = ? LIMIT 1",
-      [mobile],
-    );
-
-    if (existingUsers.length > 0) {
-      connection.release();
+    const existingUser = await User.findOne({ mobile });
+    if (existingUser) {
       return res
         .status(400)
         .json({ message: "Mobile number is already registered." });
@@ -217,42 +155,33 @@ app.post("/api/register", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Start database transaction
-    await connection.beginTransaction();
+    // 4. Create new user document
+    const newUser = new User({
+      username,
+      mobile,
+      passwordHash,
+      courseType,
+      language,
+      role: role || "user", // Defaults to "user" unless specified
+    });
 
-    // 4. Insert new user into `register` table
-    const [userResult] = await connection.execute(
-      `INSERT INTO register (username, mobile, passwordHash, courseType, language, role) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [username, mobile, passwordHash, courseType, language, role || "user"],
-    );
+    await newUser.save();
 
-    const newUserId = userResult.insertId;
+    const personalDetails = new PersonalDetails({
+      userId: newUser._id,
+      name: username, // Maps the registration username to name
+      language: language, // Matches the language chosen at registration
+    });
 
-    // 5. Insert personal details linking to `newUserId`
-    await connection.execute(
-      `INSERT INTO personal_details (userId, name, language) 
-       VALUES (?, ?, ?)`,
-      [newUserId, username, language],
-    );
+    await personalDetails.save();
 
-    // Commit transaction
-    await connection.commit();
-    connection.release();
-
-    return res.status(201).json({
+    res.status(201).json({
       message: "User registered successfully",
-      userId: newUserId,
+      userId: newUser._id,
     });
   } catch (error) {
-    // Rollback changes if any query fails
-    await connection.rollback();
-    connection.release();
-
     console.error("Registration Error:", error);
-    return res
-      .status(500)
-      .json({ message: "Server error during registration." });
+    res.status(500).json({ message: "Server error during registration." });
   }
 });
 
@@ -395,6 +324,62 @@ app.delete("/api/registered-users/:id", async (req, res) => {
     });
   }
 });
+// ----test----
+// app.post("/api/login", async (req, res) => {
+//   try {
+//     const { mobile, password } = req.body;
+
+//     if (!mobile || !password) {
+//       return res
+//         .status(400)
+//         .json({ message: "Mobile and password are required" });
+//     }
+
+//     // 1. Find user in the 'register' collection by mobile number
+//     const user = await User.findOne({ mobile });
+
+//     if (!user) {
+//       return res
+//         .status(404)
+//         .json({ message: "User not registered. Please sign up first." });
+//     }
+
+//     // 2. Check password
+//     const isMatch = await bcrypt.compare(password, user.passwordHash);
+//     if (!isMatch) {
+//       return res
+//         .status(401)
+//         .json({ message: "Invalid mobile number or password" });
+//     }
+
+//     // 3. Generate JWT Token (MUST include user.language for downstream feed filtering)
+//     const token = jwt.sign(
+//       {
+//         userId: user._id,
+//         mobile: user.mobile,
+//         role: user.role,
+//         language: user.language, // Added language here
+//       },
+//       process.env.JWT_SECRET || "YOUR_JWT_SECRET_KEY",
+//       { expiresIn: "1d" },
+//     );
+
+//     // 4. Return success response
+//     return res.status(200).json({
+//       success: true,
+//       message: "Login successful!",
+//       token,
+//       id: user._id,
+//       role: user.role,
+//       username: user.username,
+//       courseType: user.courseType,
+//       language: user.language, // Fixed: dynamically reading from user document
+//     });
+//   } catch (error) {
+//     console.error("Login Error:", error);
+//     return res.status(500).json({ message: "Server error during login" });
+//   }
+// });
 
 app.post("/api/login", async (req, res) => {
   try {
@@ -406,32 +391,14 @@ app.post("/api/login", async (req, res) => {
         .json({ message: "Mobile and password are required" });
     }
 
-    // 1. Fetch user & matched profile image using a single LEFT JOIN query
-    const [rows] = await db.execute(
-      `SELECT 
-        u.id, 
-        u.username, 
-        u.mobile, 
-        u.passwordHash, 
-        u.role, 
-        u.courseType, 
-        u.language, 
-        p.profileImage 
-       FROM register u 
-       LEFT JOIN personal_details p 
-         ON u.id = p.userId AND p.language = u.language 
-       WHERE u.mobile = ? 
-       LIMIT 1`,
-      [mobile],
-    );
+    // 1. Find user in the 'register' collection by mobile number
+    const user = await User.findOne({ mobile });
 
-    if (rows.length === 0) {
+    if (!user) {
       return res
         .status(404)
         .json({ message: "User not registered. Please sign up first." });
     }
-
-    const user = rows[0];
 
     // 2. Check password
     const isMatch = await bcrypt.compare(password, user.passwordHash);
@@ -441,13 +408,22 @@ app.post("/api/login", async (req, res) => {
         .json({ message: "Invalid mobile number or password" });
     }
 
-    const profileImage = user.profileImage || "";
+    // 3. Fetch user's profile image from PersonalDetails based on userId and language
+    const profile = await mongoose
+      .model("PersonalDetails")
+      .findOne({
+        userId: user._id,
+        language: user.language,
+      })
+      .lean();
+
+    const profileImage = profile?.profileImage || "";
     console.log("profileImage", profileImage);
 
-    // 3. Generate JWT Token
+    // 4. Generate JWT Token
     const token = jwt.sign(
       {
-        userId: user.id,
+        userId: user._id,
         mobile: user.mobile,
         role: user.role,
         language: user.language,
@@ -457,17 +433,17 @@ app.post("/api/login", async (req, res) => {
       { expiresIn: "1d" },
     );
 
-    // 4. Return success response with user details & profileImage
+    // 5. Return success response with profileImage
     return res.status(200).json({
       success: true,
       message: "Login successful!",
       token,
-      id: user.id,
+      id: user._id,
       role: user.role,
       username: user.username,
       courseType: user.courseType,
       language: user.language,
-      profileImage,
+      profileImage, // <--- Returns profile picture path or empty string
     });
   } catch (error) {
     console.error("Login Error:", error);
@@ -482,6 +458,642 @@ const getMediaTypeFromUrl = (url = "") => {
   if (/\.(mp3|wav|aac|m4a|flac)$/.test(cleanUrl)) return "audio";
   return "file";
 };
+
+// app.post("/api/posts", upload.array("files"), async (req, res) => {
+//   try {
+//     const { userId, content, tagIds, fileTypes, targetLanguage } = req.body;
+
+//     if (!userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId is required to create a post.",
+//       });
+//     }
+
+//     // 1. Fetch the actual user from MongoDB to get accurate role, courseType & language
+//     const author = await User.findById(userId);
+//     if (!author) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Post author not found in database.",
+//       });
+//     }
+
+//     // Determine target post language:
+//     // If author is Admin, use the route language sent from frontend (targetLanguage).
+//     // If author is standard User, strictly enforce their account language.
+//     const postLanguage =
+//       author.role === "admin"
+//         ? targetLanguage || author.language
+//         : author.language;
+
+//     // Safely parse JSON strings sent from Angular FormData
+//     let parsedTagIds = [];
+//     if (tagIds) {
+//       try {
+//         parsedTagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
+//       } catch (e) {
+//         parsedTagIds = [];
+//       }
+//     }
+
+//     // Normalize fileTypes array
+//     const typesArray = Array.isArray(fileTypes)
+//       ? fileTypes
+//       : fileTypes
+//         ? [fileTypes]
+//         : [];
+
+//     const mediaFiles = (req.files || []).map((file, index) => ({
+//       filename: file.filename,
+//       path: file.path,
+//       mimetype: file.mimetype,
+//       mediaType: typesArray[index] || "file",
+//     }));
+
+//     // 2. Create the post with language, courseType, and media
+//     const newPost = new Post({
+//       userId,
+//       content,
+//       tagIds: parsedTagIds,
+//       courseType: author.courseType,
+//       language: postLanguage, // <--- Language applied here
+//       mediaFiles,
+//     });
+
+//     await newPost.save();
+
+//     // 3. Build target recipients query matched strictly by POST LANGUAGE
+//     // Exclude author AND filter by matching language
+//     const targetUsers = await User.find({
+//       _id: { $ne: author._id },
+//       $or: [
+//         {
+//           language: postLanguage, // <--- Only notify users matching this post's language
+//         },
+//         {
+//           role: "admin",
+//         },
+//       ],
+//     }).select("_id");
+
+//     console.log(`Author ID: ${author._id} (${author.role})`);
+//     console.log(`Post Language: ${postLanguage}`);
+//     console.log(`Target Recipients Count: ${targetUsers.length}`);
+
+//     // 4. Bulk insert notification records for relevant recipients
+//     if (targetUsers.length > 0) {
+//       const notifications = targetUsers.map((user) => ({
+//         recipient: user._id,
+//         sender: author._id,
+//         postId: newPost._id,
+//         postModel: "Post",
+//         postContentSnippet: content ? content.trim() : "Uploaded media post.",
+//         isRead: false,
+//       }));
+
+//       await Notification.insertMany(notifications);
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message: "Post created and notifications queued successfully.",
+//       data: newPost,
+//     });
+//   } catch (error) {
+//     console.error("Error creating post:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: error.message,
+//     });
+//   }
+// });
+
+// app.get("/api/posts", async (req, res) => {
+//   try {
+//     const { language } = req.query;
+
+//     let formattedLang;
+//     if (language) {
+//       const lower = language.toLowerCase();
+//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
+//       if (lower === "en" || lower === "english") formattedLang = "English";
+//     }
+
+//     const posts = await Post.aggregate([
+//       // 1. Join user details safely (handles string vs objectId)
+//       {
+//         $lookup: {
+//           from: "register",
+//           let: { postUserId: "$userId" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$_id" }, { $toString: "$$postUserId" }],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorDetails",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$authorDetails",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+
+//       // 2. Filter by language match if query provided
+//       ...(formattedLang
+//         ? [{ $match: { "authorDetails.language": formattedLang } }]
+//         : []),
+
+//       // 3. Join comments collection
+//       {
+//         $lookup: {
+//           from: "comments",
+//           let: { postId: "$_id" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$postId" }, { $toString: "$$postId" }],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "allComments",
+//         },
+//       },
+
+//       // 4. Attach author details object and comment count
+//       {
+//         $addFields: {
+//           commentCount: { $size: "$allComments" },
+//           userId: {
+//             _id: "$authorDetails._id",
+//             username: "$authorDetails.username",
+//             mobile: "$authorDetails.mobile",
+//             role: "$authorDetails.role",
+//             courseType: "$authorDetails.courseType",
+//             language: "$authorDetails.language",
+//           },
+//         },
+//       },
+
+//       // 5. Cleanup temporary arrays
+//       {
+//         $project: {
+//           allComments: 0,
+//           authorDetails: 0,
+//         },
+//       },
+//       { $sort: { createdAt: -1 } },
+//     ]);
+
+//     return res.status(200).json({ success: true, data: posts });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// });
+
+// app.get("/api/posts", async (req, res) => {
+//   try {
+//     const { language } = req.query;
+
+//     let formattedLang;
+//     if (language) {
+//       const lower = language.toLowerCase();
+//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
+//       if (lower === "en" || lower === "english") formattedLang = "English";
+//     }
+
+//     const posts = await Post.aggregate([
+//       // 1. Join Post Author details safely
+//       {
+//         $lookup: {
+//           from: "register",
+//           let: { postUserId: "$userId" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$_id" }, { $toString: "$$postUserId" }],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorDetails",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$authorDetails",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+
+//       // 2. Filter posts by language match if query provided
+//       // (Using $post.language directly or author language)
+//       ...(formattedLang
+//         ? [
+//             {
+//               $match: {
+//                 $or: [
+//                   { language: formattedLang },
+//                   { "authorDetails.language": formattedLang },
+//                 ],
+//               },
+//             },
+//           ]
+//         : []),
+
+//       // 3. Join Post Author's PersonalDetails by matching userId AND language
+//       {
+//         $lookup: {
+//           from: "personaldetails",
+//           let: {
+//             authorId: "$authorDetails._id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $and: [
+//                     {
+//                       $eq: [
+//                         { $toString: "$userId" },
+//                         { $toString: "$$authorId" },
+//                       ],
+//                     },
+//                     { $eq: ["$language", "$$postLang"] },
+//                   ],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorProfile",
+//         },
+//       },
+
+//       // 4. Join comments collection AND populate each comment's author profile
+//       {
+//         $lookup: {
+//           from: "comments",
+//           let: {
+//             postId: "$_id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$postId" }, { $toString: "$$postId" }],
+//                 },
+//               },
+//             },
+//             // Join Comment Author User
+//             {
+//               $lookup: {
+//                 from: "register",
+//                 let: { commentUserId: "$userId" },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $eq: [
+//                           { $toString: "$_id" },
+//                           { $toString: "$$commentUserId" },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthor",
+//               },
+//             },
+//             {
+//               $unwind: {
+//                 path: "$commentAuthor",
+//                 preserveNullAndEmptyArrays: true,
+//               },
+//             },
+//             // Join Comment Author's PersonalDetails matching post language
+//             {
+//               $lookup: {
+//                 from: "personaldetails",
+//                 let: {
+//                   commentAuthorId: "$commentAuthor._id",
+//                   targetLang: "$$postLang",
+//                 },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $and: [
+//                           {
+//                             $eq: [
+//                               { $toString: "$userId" },
+//                               { $toString: "$$commentAuthorId" },
+//                             ],
+//                           },
+//                           { $eq: ["$language", "$$targetLang"] },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthorProfile",
+//               },
+//             },
+//             // Structure Comment Object with Profile Image
+//             {
+//               $project: {
+//                 _id: 1,
+//                 content: 1,
+//                 createdAt: 1,
+//                 userId: {
+//                   _id: "$commentAuthor._id",
+//                   username: "$commentAuthor.username",
+//                   profileImage: {
+//                     $ifNull: [
+//                       {
+//                         $arrayElemAt: ["$commentAuthorProfile.profileImage", 0],
+//                       },
+//                       "",
+//                     ],
+//                   },
+//                 },
+//               },
+//             },
+//           ],
+//           as: "allComments",
+//         },
+//       },
+
+//       // 5. Structure Post Output with author profileImage
+//       {
+//         $addFields: {
+//           commentCount: { $size: "$allComments" },
+//           userId: {
+//             _id: "$authorDetails._id",
+//             username: "$authorDetails.username",
+//             mobile: "$authorDetails.mobile",
+//             role: "$authorDetails.role",
+//             courseType: "$authorDetails.courseType",
+//             language: "$authorDetails.language",
+//             profileImage: {
+//               $ifNull: [
+//                 { $arrayElemAt: ["$authorProfile.profileImage", 0] },
+//                 "",
+//               ],
+//             },
+//           },
+//         },
+//       },
+
+//       // 6. Cleanup temp arrays
+//       {
+//         $project: {
+//           authorDetails: 0,
+//           authorProfile: 0,
+//         },
+//       },
+//       { $sort: { createdAt: -1 } },
+//     ]);
+
+//     return res.status(200).json({ success: true, data: posts });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// });
+
+// app.get("/api/posts", async (req, res) => {
+//   try {
+//     const { language } = req.query;
+
+//     let formattedLang;
+//     if (language) {
+//       const lower = language.toLowerCase();
+//       if (lower === "te" || lower === "telugu") formattedLang = "Telugu";
+//       if (lower === "en" || lower === "english") formattedLang = "English";
+//     }
+
+//     const posts = await Post.aggregate([
+//       // 1. Join Post Author details safely
+//       {
+//         $lookup: {
+//           from: "register",
+//           let: { postUserId: "$userId" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$_id" }, { $toString: "$$postUserId" }],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorDetails",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$authorDetails",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+
+//       // 2. Filter posts by language match if query provided
+//       ...(formattedLang
+//         ? [
+//             {
+//               $match: {
+//                 $or: [
+//                   { language: formattedLang },
+//                   { "authorDetails.language": formattedLang },
+//                 ],
+//               },
+//             },
+//           ]
+//         : []),
+
+//       // 3. Join Post Author's PersonalDetails by matching userId AND language
+//       {
+//         $lookup: {
+//           from: "personaldetails",
+//           let: {
+//             authorId: "$authorDetails._id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $and: [
+//                     {
+//                       $eq: [
+//                         { $toString: "$userId" },
+//                         { $toString: "$$authorId" },
+//                       ],
+//                     },
+//                     { $eq: ["$language", "$$postLang"] },
+//                   ],
+//                 },
+//               },
+//             },
+//           ],
+//           as: "authorProfile",
+//         },
+//       },
+
+//       // 4. Join comments collection AND populate each comment's author profile
+//       {
+//         $lookup: {
+//           from: "comments",
+//           let: {
+//             postId: "$_id",
+//             postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+//           },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: {
+//                   $eq: [{ $toString: "$postId" }, { $toString: "$$postId" }],
+//                 },
+//               },
+//             },
+//             // Join Comment Author User
+//             {
+//               $lookup: {
+//                 from: "register",
+//                 let: { commentUserId: "$userId" },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $eq: [
+//                           { $toString: "$_id" },
+//                           { $toString: "$$commentUserId" },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthor",
+//               },
+//             },
+//             {
+//               $unwind: {
+//                 path: "$commentAuthor",
+//                 preserveNullAndEmptyArrays: true,
+//               },
+//             },
+//             // Join Comment Author's PersonalDetails matching post language
+//             {
+//               $lookup: {
+//                 from: "personaldetails",
+//                 let: {
+//                   commentAuthorId: "$commentAuthor._id",
+//                   targetLang: "$$postLang",
+//                 },
+//                 pipeline: [
+//                   {
+//                     $match: {
+//                       $expr: {
+//                         $and: [
+//                           {
+//                             $eq: [
+//                               { $toString: "$userId" },
+//                               { $toString: "$$commentAuthorId" },
+//                             ],
+//                           },
+//                           { $eq: ["$language", "$$targetLang"] },
+//                         ],
+//                       },
+//                     },
+//                   },
+//                 ],
+//                 as: "commentAuthorProfile",
+//               },
+//             },
+//             // Structure Comment Object with Name and Profile Image
+//             {
+//               $project: {
+//                 _id: 1,
+//                 content: 1,
+//                 createdAt: 1,
+//                 userId: {
+//                   _id: "$commentAuthor._id",
+//                   username: "$commentAuthor.username",
+//                   name: {
+//                     $ifNull: [
+//                       { $arrayElemAt: ["$commentAuthorProfile.name", 0] },
+//                       "$commentAuthor.username",
+//                     ],
+//                   },
+//                   profileImage: {
+//                     $ifNull: [
+//                       {
+//                         $arrayElemAt: ["$commentAuthorProfile.profileImage", 0],
+//                       },
+//                       "",
+//                     ],
+//                   },
+//                 },
+//               },
+//             },
+//           ],
+//           as: "allComments",
+//         },
+//       },
+
+//       // 5. Structure Post Output with author name & profileImage
+//       {
+//         $addFields: {
+//           commentCount: { $size: "$allComments" },
+//           userId: {
+//             _id: "$authorDetails._id",
+//             username: "$authorDetails.username",
+//             name: {
+//               $ifNull: [
+//                 { $arrayElemAt: ["$authorProfile.name", 0] },
+//                 "$authorDetails.username",
+//               ],
+//             },
+//             mobile: "$authorDetails.mobile",
+//             role: "$authorDetails.role",
+//             courseType: "$authorDetails.courseType",
+//             language: "$authorDetails.language",
+//             profileImage: {
+//               $ifNull: [
+//                 { $arrayElemAt: ["$authorProfile.profileImage", 0] },
+//                 "",
+//               ],
+//             },
+//           },
+//         },
+//       },
+
+//       // 6. Cleanup temp arrays
+//       {
+//         $project: {
+//           authorDetails: 0,
+//           authorProfile: 0,
+//         },
+//       },
+//       { $sort: { createdAt: -1 } },
+//     ]);
+
+//     return res.status(200).json({ success: true, data: posts });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// });
 
 app.post("/api/posts", async (req, res) => {
   try {
@@ -594,142 +1206,251 @@ app.get("/api/posts", async (req, res) => {
       if (lower === "en" || lower === "english") formattedLang = "English";
     }
 
-    // 1. Fetch Posts with Author details and PersonalDetails profile
-    let postsQuery = `
-      SELECT 
-        p.id,
-        p.content,
-        p.courseType,
-        p.language,
-        p.mediaFiles,
-        p.tagIds,
-        p.likeCount,
-        p.likes,
-        p.views,
-        p.created_at AS createdAt,
-        p.updated_at AS updatedAt,
-        u.id AS author_id,
-        u.username AS author_username,
-        u.mobile AS author_mobile,
-        u.role AS author_role,
-        u.courseType AS author_courseType,
-        u.language AS author_language,
-        COALESCE(pd.name, u.username, 'Unknown User') AS author_name,
-        COALESCE(pd.profileImage, '') AS author_profileImage
-      FROM posts p
-      LEFT JOIN register u 
-        ON p.userId = u.id
-      LEFT JOIN personal_details pd 
-        ON u.id = pd.userId 
-       AND pd.language = COALESCE(p.language, u.language)
-    `;
-
-    const queryParams = [];
-    if (formattedLang) {
-      postsQuery += ` WHERE p.language = ? OR u.language = ?`;
-      queryParams.push(formattedLang, formattedLang);
-    }
-
-    postsQuery += ` ORDER BY p.created_at DESC`;
-
-    const [postRows] = await db.execute(postsQuery, queryParams);
-
-    if (postRows.length === 0) {
-      return res.status(200).json({ success: true, data: [] });
-    }
-
-    // Extract post IDs to batch-fetch comments
-    const postIds = postRows.map((post) => post.id);
-
-    // 2. Fetch all comments for these posts along with Comment Author profiles
-    const placeholders = postIds.map(() => "?").join(",");
-    const commentsQuery = `
-      SELECT 
-        c.id,
-        c.postId,
-        c.content,
-        c.created_at AS createdAt,
-        u.id AS comment_author_id,
-        u.username AS comment_author_username,
-        COALESCE(pd.name, u.username, 'Unknown User') AS comment_author_name,
-        COALESCE(pd.profileImage, '') AS comment_author_profileImage
-      FROM comments c
-      LEFT JOIN register u 
-        ON c.userId = u.id
-      LEFT JOIN posts p 
-        ON c.postId = p.id
-      LEFT JOIN personal_details pd 
-        ON u.id = pd.userId 
-       AND pd.language = COALESCE(p.language, u.language)
-      WHERE c.postId IN (${placeholders})
-      ORDER BY c.created_at ASC
-    `;
-
-    const [commentRows] = await db.execute(commentsQuery, postIds);
-
-    // 3. Group comments by postId
-    const commentsByPostId = {};
-    commentRows.forEach((comment) => {
-      if (!commentsByPostId[comment.postId]) {
-        commentsByPostId[comment.postId] = [];
-      }
-      commentsByPostId[comment.postId].push({
-        _id: comment.id,
-        content: comment.content,
-        createdAt: comment.createdAt,
-        userId: {
-          _id: comment.comment_author_id,
-          username: comment.comment_author_username,
-          name: comment.comment_author_name,
-          profileImage: comment.comment_author_profileImage,
+    const posts = await Post.aggregate([
+      // 1. Join Post Author details using ObjectId conversion if needed
+      {
+        $lookup: {
+          from: "register",
+          let: { postUserId: "$userId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    { $eq: ["$_id", "$$postUserId"] },
+                    {
+                      $eq: [
+                        { $toString: "$_id" },
+                        { $toString: "$$postUserId" },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "authorDetails",
         },
-      });
-    });
-
-    // 4. Map final response payload to retain MongoDB structure
-    const posts = postRows.map((post) => {
-      const allComments = commentsByPostId[post.id] || [];
-
-      // Parse JSON columns if stored as JSON strings in MySQL
-      let mediaFiles = post.mediaFiles;
-      let tagIds = post.tagIds;
-      let likes = post.likes;
-
-      if (typeof mediaFiles === "string")
-        mediaFiles = JSON.parse(mediaFiles || "[]");
-      if (typeof tagIds === "string") tagIds = JSON.parse(tagIds || "[]");
-      if (typeof likes === "string") likes = JSON.parse(likes || "[]");
-
-      return {
-        _id: post.id,
-        content: post.content,
-        courseType: post.courseType,
-        language: post.language,
-        mediaFiles,
-        tagIds,
-        likeCount: post.likeCount || 0,
-        likes,
-        views: post.views || 0,
-        createdAt: post.createdAt,
-        updatedAt: post.updatedAt,
-        commentCount: allComments.length,
-        allComments,
-        userId: {
-          _id: post.author_id || post.userId,
-          username: post.author_username,
-          name: post.author_name,
-          mobile: post.author_mobile,
-          role: post.author_role,
-          courseType: post.author_courseType,
-          language: post.author_language,
-          profileImage: post.author_profileImage,
+      },
+      {
+        $unwind: {
+          path: "$authorDetails",
+          preserveNullAndEmptyArrays: true,
         },
-      };
-    });
+      },
+
+      // 2. Filter posts by language match if query provided
+      ...(formattedLang
+        ? [
+            {
+              $match: {
+                $or: [
+                  { language: formattedLang },
+                  { "authorDetails.language": formattedLang },
+                ],
+              },
+            },
+          ]
+        : []),
+
+      // 3. Join Post Author's PersonalDetails by matching userId AND language
+      {
+        $lookup: {
+          from: "personaldetails",
+          let: {
+            authorId: "$authorDetails._id",
+            postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    {
+                      $or: [
+                        { $eq: ["$userId", "$$authorId"] },
+                        {
+                          $eq: [
+                            { $toString: "$userId" },
+                            { $toString: "$$authorId" },
+                          ],
+                        },
+                      ],
+                    },
+                    { $eq: ["$language", "$$postLang"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "authorProfile",
+        },
+      },
+
+      // 4. Join comments collection AND populate each comment's author profile
+      {
+        $lookup: {
+          from: "comments",
+          let: {
+            postId: "$_id",
+            postLang: { $ifNull: ["$language", "$authorDetails.language"] },
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    { $eq: ["$postId", "$$postId"] },
+                    {
+                      $eq: [
+                        { $toString: "$postId" },
+                        { $toString: "$$postId" },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+            // Join Comment Author User
+            {
+              $lookup: {
+                from: "register",
+                let: { commentUserId: "$userId" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $or: [
+                          { $eq: ["$_id", "$$commentUserId"] },
+                          {
+                            $eq: [
+                              { $toString: "$_id" },
+                              { $toString: "$$commentUserId" },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  },
+                ],
+                as: "commentAuthor",
+              },
+            },
+            {
+              $unwind: {
+                path: "$commentAuthor",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+            // Join Comment Author's PersonalDetails
+            {
+              $lookup: {
+                from: "personaldetails",
+                let: {
+                  commentAuthorId: "$commentAuthor._id",
+                  targetLang: "$$postLang",
+                },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          {
+                            $or: [
+                              { $eq: ["$userId", "$$commentAuthorId"] },
+                              {
+                                $eq: [
+                                  { $toString: "$userId" },
+                                  { $toString: "$$commentAuthorId" },
+                                ],
+                              },
+                            ],
+                          },
+                          { $eq: ["$language", "$$targetLang"] },
+                        ],
+                      },
+                    },
+                  },
+                ],
+                as: "commentAuthorProfile",
+              },
+            },
+            // Structure Comment Object
+            {
+              $project: {
+                _id: 1,
+                content: 1,
+                createdAt: 1,
+                userId: {
+                  _id: "$commentAuthor._id",
+                  username: "$commentAuthor.username",
+                  name: {
+                    $ifNull: [
+                      { $arrayElemAt: ["$commentAuthorProfile.name", 0] },
+                      "$commentAuthor.username",
+                      "Unknown User",
+                    ],
+                  },
+                  profileImage: {
+                    $ifNull: [
+                      {
+                        $arrayElemAt: ["$commentAuthorProfile.profileImage", 0],
+                      },
+                      "",
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+          as: "allComments",
+        },
+      },
+
+      // 5. Structure Final Output
+      {
+        $project: {
+          content: 1,
+          courseType: 1,
+          language: 1,
+          mediaFiles: 1,
+          tagIds: 1,
+          likeCount: 1,
+          likes: 1,
+          views: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          __v: 1,
+          commentCount: { $size: "$allComments" },
+          allComments: 1,
+          userId: {
+            _id: { $ifNull: ["$authorDetails._id", "$userId"] },
+            username: "$authorDetails.username",
+            name: {
+              $ifNull: [
+                { $arrayElemAt: ["$authorProfile.name", 0] },
+                "$authorDetails.username",
+                "Unknown User",
+              ],
+            },
+            mobile: "$authorDetails.mobile",
+            role: "$authorDetails.role",
+            courseType: "$authorDetails.courseType",
+            language: "$authorDetails.language",
+            profileImage: {
+              $ifNull: [
+                { $arrayElemAt: ["$authorProfile.profileImage", 0] },
+                "",
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+    ]);
 
     return res.status(200).json({ success: true, data: posts });
   } catch (error) {
-    console.error("Error fetching posts:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -1652,6 +2373,201 @@ app.patch("/api/notifications/:id/read", async (req, res) => {
   }
 });
 
+// UPDATE POST & MEDIA FILES
+// app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
+//   try {
+//     // 1. Extract userId from req.body (or from req.user if using auth middleware)
+//     const { content, userId, removedMediaIds } = req.body;
+//     const post = await Post.findById(req.params.id);
+
+//     if (!post) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Post not found" });
+//     }
+
+//     // 2. Normalize and compare post.userId with incoming userId
+//     const postUserId = post.userId ? post.userId.toString() : "";
+//     const incomingUserId = userId ? userId.toString() : "";
+
+//     if (!incomingUserId || postUserId !== incomingUserId) {
+//       return res
+//         .status(403)
+//         .json({ success: false, message: "Unauthorized action" });
+//     }
+
+//     // 3. Update text content
+//     if (content !== undefined) post.content = content;
+
+//     // 4. Remove specified media files from disk & database
+//     if (removedMediaIds) {
+//       const idsToDelete = Array.isArray(removedMediaIds)
+//         ? removedMediaIds
+//         : [removedMediaIds];
+
+//       post.mediaFiles = post.mediaFiles.filter((file) => {
+//         if (idsToDelete.includes(file._id.toString())) {
+//           // Delete file physically from disk
+//           const filePath = path.join(process.cwd(), file.path);
+//           if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+//           return false;
+//         }
+//         return true;
+//       });
+//     }
+
+//     // 5. Append newly uploaded media files
+//     if (req.files && req.files.length > 0) {
+//       const uploadedMedia = req.files.map((file) => ({
+//         filename: file.originalname,
+//         path: file.path,
+//         mimetype: file.mimetype,
+//         mediaType: file.mimetype.startsWith("image/")
+//           ? "image"
+//           : file.mimetype.startsWith("video/")
+//             ? "video"
+//             : "audio",
+//       }));
+//       post.mediaFiles.push(...uploadedMedia);
+//     }
+
+//     const updatedPost = await post.save();
+//     return res.status(200).json({ success: true, data: updatedPost });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, error: error.message });
+//   }
+// });
+
+// app.put("/api/posts/:id", upload.array("newFiles"), async (req, res) => {
+//   try {
+//     const {
+//       userId,
+//       content,
+//       tagIds,
+//       fileTypes,
+//       targetLanguage,
+//       removedMediaIds,
+//     } = req.body;
+
+//     // 1. Fetch post to update
+//     const post = await Post.findById(req.params.id);
+//     if (!post) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Post not found" });
+//     }
+
+//     // 2. Fetch editor user to verify identity, role, and language settings
+//     const author = await User.findById(userId);
+//     if (!author) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User making the edit not found in database.",
+//       });
+//     }
+
+//     // 3. Authorization check: Ensure only post author or admin can update
+//     const isOwner = post.userId
+//       ? post.userId.toString() === author._id.toString()
+//       : false;
+//     const isAdmin = author.role === "admin";
+
+//     if (!isOwner && !isAdmin) {
+//       return res
+//         .status(403)
+//         .json({ success: false, message: "Unauthorized action" });
+//     }
+
+//     // 4. Update core content fields
+//     if (content !== undefined) post.content = content;
+
+//     // Determine target post language update
+//     if (isAdmin && targetLanguage) {
+//       post.language = targetLanguage;
+//     } else if (author.language) {
+//       post.language = author.language;
+//     }
+
+//     // Safely parse JSON tagIds sent from Angular FormData
+//     if (tagIds !== undefined) {
+//       try {
+//         post.tagIds = typeof tagIds === "string" ? JSON.parse(tagIds) : tagIds;
+//       } catch (e) {
+//         post.tagIds = [];
+//       }
+//     }
+
+//     // 5. Delete removed media files from disk & document array
+//     if (removedMediaIds) {
+//       let idsToDelete = [];
+//       try {
+//         idsToDelete =
+//           typeof removedMediaIds === "string"
+//             ? JSON.parse(removedMediaIds)
+//             : removedMediaIds;
+//       } catch (e) {
+//         idsToDelete = Array.isArray(removedMediaIds)
+//           ? removedMediaIds
+//           : [removedMediaIds];
+//       }
+
+//       post.mediaFiles = post.mediaFiles.filter((file) => {
+//         if (idsToDelete.includes(file._id.toString())) {
+//           const filePath = path.join(process.cwd(), file.path);
+//           if (fs.existsSync(filePath)) {
+//             try {
+//               fs.unlinkSync(filePath);
+//             } catch (err) {
+//               console.error(`Failed to delete file at ${filePath}:`, err);
+//             }
+//           }
+//           return false;
+//         }
+//         return true;
+//       });
+//     }
+
+//     // 6. Process newly uploaded media files with custom fileTypes
+//     if (req.files && req.files.length > 0) {
+//       const typesArray = Array.isArray(fileTypes)
+//         ? fileTypes
+//         : fileTypes
+//           ? [fileTypes]
+//           : [];
+
+//       const newUploadedMedia = req.files.map((file, index) => ({
+//         filename: file.filename,
+//         path: file.path,
+//         mimetype: file.mimetype,
+//         mediaType:
+//           typesArray[index] ||
+//           (file.mimetype.startsWith("image/")
+//             ? "image"
+//             : file.mimetype.startsWith("video/")
+//               ? "video"
+//               : "audio"),
+//       }));
+
+//       post.mediaFiles.push(...newUploadedMedia);
+//     }
+
+//     const updatedPost = await post.save();
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Post updated successfully",
+//       data: updatedPost,
+//     });
+//   } catch (error) {
+//     console.error("Error updating post:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: error.message,
+//     });
+//   }
+// });
+
 /**
  * Helper utility to extract S3 Object Key from a Full S3 URL
  */
@@ -1804,6 +2720,46 @@ app.put("/api/posts/:id", async (req, res) => {
     });
   }
 });
+
+// DELETE POST & ALL ASSOCIATED MEDIA
+// app.delete("/api/posts/:id", async (req, res) => {
+//   try {
+//     // Read userId from query params (handles both req.query.userId and req.query.userid)
+//     const userId = req.query.userid;
+//     const post = await Post.findById(req.params.id);
+
+//     if (!post) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Post not found" });
+//     }
+
+//     // Compare string representations of the user IDs
+//     const postUserId = post.userId ? post.userId.toString() : "";
+//     const incomingUserId = userId ? userId.toString() : "";
+
+//     if (!incomingUserId || postUserId !== incomingUserId) {
+//       return res
+//         .status(403)
+//         .json({ success: false, message: "Unauthorized action" });
+//     }
+
+//     // Delete attached media files from disk
+//     if (post.mediaFiles && post.mediaFiles.length > 0) {
+//       post.mediaFiles.forEach((file) => {
+//         const filePath = path.join(process.cwd(), file.path);
+//         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+//       });
+//     }
+
+//     await Post.findByIdAndDelete(req.params.id);
+//     return res
+//       .status(200)
+//       .json({ success: true, message: "Post and media deleted" });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, error: error.message });
+//   }
+// });
 
 app.delete("/api/posts/:id", async (req, res) => {
   try {
