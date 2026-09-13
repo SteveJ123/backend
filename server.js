@@ -1921,23 +1921,86 @@ app.get("/api/courses", async (req, res) => {
 });
 
 // POST: Admin create course
-app.post("/api/courses", upload.single("thumbnail"), async (req, res) => {
-  try {
-    const { title, description, instructor, isPaid, isNewCourse, language } =
-      req.body;
+// app.post("/api/courses", upload.single("thumbnail"), async (req, res) => {
+//   try {
+//     const { title, description, instructor, isPaid, isNewCourse, language } =
+//       req.body;
 
-    if (!req.file) {
+//     if (!req.file) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Thumbnail image file is required.",
+//       });
+//     }
+
+//     if (!title) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "Invalid title. Must be 'Face Yoga' or 'Face Yoga + Raj Yoga'.",
+//       });
+//     }
+
+//     const formattedLang = language;
+//     if (!formattedLang) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Valid language ('English' or 'Telugu') is required.",
+//       });
+//     }
+
+//     const thumbnailUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+
+//     const newCourse = new Course({
+//       title: title.trim(),
+//       description,
+//       instructor: instructor || "Pooja Agarwala",
+//       thumbnail: thumbnailUrl,
+//       isPaid: isPaid === "true" || isPaid === true,
+//       isNewCourse: isNewCourse === "true" || isNewCourse === true,
+//       language: formattedLang,
+//       progress: 0,
+//       status: "not_started",
+//     });
+
+//     const savedCourse = await newCourse.save();
+
+//     return res.status(201).json({
+//       success: true,
+//       message: "Course created successfully",
+//       data: savedCourse,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message || "Server error while creating course",
+//     });
+//   }
+// });
+
+app.post("/api/courses", async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      instructor,
+      thumbnail,
+      isPaid,
+      isNewCourse,
+      language,
+    } = req.body;
+
+    if (!thumbnail || typeof thumbnail !== "string" || !thumbnail.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Thumbnail image file is required.",
+        message: "Thumbnail URL is required.",
       });
     }
 
-    if (!title) {
+    if (!title || !title.trim()) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid title. Must be 'Face Yoga' or 'Face Yoga + Raj Yoga'.",
+        message: "Course title is required.",
       });
     }
 
@@ -1949,13 +2012,11 @@ app.post("/api/courses", upload.single("thumbnail"), async (req, res) => {
       });
     }
 
-    const thumbnailUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
-
     const newCourse = new Course({
       title: title.trim(),
       description,
       instructor: instructor || "Pooja Agarwala",
-      thumbnail: thumbnailUrl,
+      thumbnail: thumbnail.trim(),
       isPaid: isPaid === "true" || isPaid === true,
       isNewCourse: isNewCourse === "true" || isNewCourse === true,
       language: formattedLang,
@@ -1971,6 +2032,7 @@ app.post("/api/courses", upload.single("thumbnail"), async (req, res) => {
       data: savedCourse,
     });
   } catch (error) {
+    console.error("Error creating course:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Server error while creating course",
@@ -1979,7 +2041,67 @@ app.post("/api/courses", upload.single("thumbnail"), async (req, res) => {
 });
 
 // PUT: Admin update course
-app.put("/api/courses/:id", upload.single("thumbnail"), async (req, res) => {
+// app.put("/api/courses/:id", upload.single("thumbnail"), async (req, res) => {
+//   try {
+//     const course = await Course.findById(req.params.id);
+
+//     if (!course) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Course not found",
+//       });
+//     }
+
+//     if (req.body.title !== undefined) course.title = req.body.title;
+//     if (req.body.description !== undefined)
+//       course.description = req.body.description;
+//     if (req.body.instructor !== undefined)
+//       course.instructor = req.body.instructor;
+//     if (req.body.status !== undefined) course.status = req.body.status;
+//     if (req.body.progress !== undefined)
+//       course.progress = Number(req.body.progress);
+
+//     if (req.body.language !== undefined) {
+//       course.language = req.body.language;
+//     }
+
+//     if (req.body.isPaid !== undefined) {
+//       course.isPaid = req.body.isPaid === "true" || req.body.isPaid === true;
+//     }
+//     if (req.body.isNewCourse !== undefined) {
+//       course.isNewCourse =
+//         req.body.isNewCourse === "true" || req.body.isNewCourse === true;
+//     }
+
+//     if (req.file) {
+//       if (course.thumbnail) {
+//         const oldFileName = course.thumbnail.split("/uploads/").pop();
+//         if (oldFileName) {
+//           const oldFilePath = path.join(process.cwd(), "uploads", oldFileName);
+//           if (fs.existsSync(oldFilePath)) {
+//             fs.unlinkSync(oldFilePath);
+//           }
+//         }
+//       }
+//       course.thumbnail = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+//     }
+
+//     const updatedCourse = await course.save();
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Course updated successfully",
+//       data: updatedCourse,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message || "Server error while updating course",
+//     });
+//   }
+// });
+
+app.put("/api/courses/:id", async (req, res) => {
   try {
     const course = await Course.findById(req.params.id);
 
@@ -1990,7 +2112,8 @@ app.put("/api/courses/:id", upload.single("thumbnail"), async (req, res) => {
       });
     }
 
-    if (req.body.title !== undefined) course.title = req.body.title;
+    // Update string and numeric fields if provided
+    if (req.body.title !== undefined) course.title = req.body.title.trim();
     if (req.body.description !== undefined)
       course.description = req.body.description;
     if (req.body.instructor !== undefined)
@@ -1998,11 +2121,9 @@ app.put("/api/courses/:id", upload.single("thumbnail"), async (req, res) => {
     if (req.body.status !== undefined) course.status = req.body.status;
     if (req.body.progress !== undefined)
       course.progress = Number(req.body.progress);
+    if (req.body.language !== undefined) course.language = req.body.language;
 
-    if (req.body.language !== undefined) {
-      course.language = req.body.language;
-    }
-
+    // Handle boolean flags
     if (req.body.isPaid !== undefined) {
       course.isPaid = req.body.isPaid === "true" || req.body.isPaid === true;
     }
@@ -2011,17 +2132,25 @@ app.put("/api/courses/:id", upload.single("thumbnail"), async (req, res) => {
         req.body.isNewCourse === "true" || req.body.isNewCourse === true;
     }
 
-    if (req.file) {
+    // Clean up old S3 file if a new thumbnail URL is provided and differs from existing
+    if (req.body.thumbnail && req.body.thumbnail !== course.thumbnail) {
       if (course.thumbnail) {
-        const oldFileName = course.thumbnail.split("/uploads/").pop();
-        if (oldFileName) {
-          const oldFilePath = path.join(process.cwd(), "uploads", oldFileName);
-          if (fs.existsSync(oldFilePath)) {
-            fs.unlinkSync(oldFilePath);
+        const oldS3Key = getS3KeyFromUrl(course.thumbnail);
+        if (oldS3Key) {
+          try {
+            await s3.send(
+              new DeleteObjectCommand({
+                Bucket: process.env.AWS_BUCKET_NAME || bucketName,
+                Key: oldS3Key,
+              }),
+            );
+            console.log(`Deleted old thumbnail S3 key: ${oldS3Key}`);
+          } catch (s3Err) {
+            console.error(`Failed to delete old S3 key (${oldS3Key}):`, s3Err);
           }
         }
       }
-      course.thumbnail = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+      course.thumbnail = req.body.thumbnail.trim();
     }
 
     const updatedCourse = await course.save();
@@ -2032,6 +2161,7 @@ app.put("/api/courses/:id", upload.single("thumbnail"), async (req, res) => {
       data: updatedCourse,
     });
   } catch (error) {
+    console.error("Error updating course:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Server error while updating course",
@@ -2040,6 +2170,43 @@ app.put("/api/courses/:id", upload.single("thumbnail"), async (req, res) => {
 });
 
 // DELETE: Admin remove a course and its thumbnail image
+// app.delete("/api/courses/:id", async (req, res) => {
+//   try {
+//     const course = await Course.findById(req.params.id);
+
+//     if (!course) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Course not found.",
+//       });
+//     }
+
+//     // 1. Delete thumbnail file from disk storage if present
+//     if (course.thumbnail) {
+//       const fileName = course.thumbnail.split("/uploads/").pop();
+//       if (fileName) {
+//         const filePath = path.join(process.cwd(), "uploads", fileName);
+//         if (fs.existsSync(filePath)) {
+//           fs.unlinkSync(filePath);
+//         }
+//       }
+//     }
+
+//     // 2. Remove document from MongoDB
+//     await Course.findByIdAndDelete(req.params.id);
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Course and thumbnail deleted successfully.",
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message || "Server error while deleting course.",
+//     });
+//   }
+// });
+
 app.delete("/api/courses/:id", async (req, res) => {
   try {
     const course = await Course.findById(req.params.id);
@@ -5375,57 +5542,130 @@ app.put("/api/personal-details/:userId", async (req, res) => {
 // -----------------------------------------------------------------------------
 // PUT: Upload/Update Profile Image
 // -----------------------------------------------------------------------------
-app.put(
-  "/api/personal-details/:userId/profile-image",
-  upload.single("image"),
-  async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const language = req.body.language || req.query.language;
-      console.log("req.body.language", req.body.language);
-      console.log("req.query.language", req.query.language);
+// app.put(
+//   "/api/personal-details/:userId/profile-image",
+//   upload.single("image"),
+//   async (req, res) => {
+//     try {
+//       const { userId } = req.params;
+//       const language = req.body.language || req.query.language;
+//       console.log("req.body.language", req.body.language);
+//       console.log("req.query.language", req.query.language);
 
-      if (!req.file) {
-        return res
-          .status(400)
-          .json({ success: false, message: "No image file provided" });
-      }
+//       if (!req.file) {
+//         return res
+//           .status(400)
+//           .json({ success: false, message: "No image file provided" });
+//       }
 
-      const imagePath = `/uploads/${req.file.filename}`;
+//       const imagePath = `/uploads/${req.file.filename}`;
 
-      // Check existing document to clean up old image from storage
-      const existingDetails = await PersonalDetails.findOne({
-        userId,
-        language,
-      });
-      if (existingDetails && existingDetails.profileImage) {
-        const oldFileName = existingDetails.profileImage
-          .split("/uploads/")
-          .pop();
-        if (oldFileName) {
-          const oldFilePath = path.join(process.cwd(), "uploads", oldFileName);
-          if (fs.existsSync(oldFilePath)) {
-            fs.unlinkSync(oldFilePath);
-          }
+//       // Check existing document to clean up old image from storage
+//       const existingDetails = await PersonalDetails.findOne({
+//         userId,
+//         language,
+//       });
+//       if (existingDetails && existingDetails.profileImage) {
+//         const oldFileName = existingDetails.profileImage
+//           .split("/uploads/")
+//           .pop();
+//         if (oldFileName) {
+//           const oldFilePath = path.join(process.cwd(), "uploads", oldFileName);
+//           if (fs.existsSync(oldFilePath)) {
+//             fs.unlinkSync(oldFilePath);
+//           }
+//         }
+//       }
+
+//       const updatedDetails = await PersonalDetails.findOneAndUpdate(
+//         { userId, language },
+//         { $set: { profileImage: imagePath, language } },
+//         { returnDocument: "after", runValidators: true, upsert: true },
+//       );
+
+//       return res.status(200).json({
+//         success: true,
+//         message: "Profile image uploaded successfully",
+//         data: updatedDetails,
+//       });
+//     } catch (error) {
+//       return res.status(500).json({ success: false, message: error.message });
+//     }
+//   },
+// );
+
+app.put("/api/personal-details/:userId/profile-image", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { profileImage, language } = req.body;
+    const targetLanguage = language || req.query.language;
+
+    // Extract new image URL (supports mediaLink or profileImage payload key)
+    const newImageUrl = profileImage;
+
+    if (
+      !newImageUrl ||
+      typeof newImageUrl !== "string" ||
+      !newImageUrl.trim()
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No S3 media URL provided" });
+    }
+
+    if (!targetLanguage) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Language parameter is required" });
+    }
+
+    // 1. Fetch existing details document to check for old S3 image deletion
+    const existingDetails = await PersonalDetails.findOne({
+      userId,
+      language: targetLanguage,
+    });
+
+    if (existingDetails && existingDetails.profileImage) {
+      const s3Key = getS3KeyFromUrl(existingDetails.profileImage);
+      if (s3Key) {
+        try {
+          await s3.send(
+            new DeleteObjectCommand({
+              Bucket: process.env.AWS_BUCKET_NAME,
+              Key: s3Key,
+            }),
+          );
+          console.log(
+            `Successfully deleted old profile image S3 key: ${s3Key}`,
+          );
+        } catch (s3Err) {
+          console.error(`Failed to delete old S3 image key (${s3Key}):`, s3Err);
         }
       }
-
-      const updatedDetails = await PersonalDetails.findOneAndUpdate(
-        { userId, language },
-        { $set: { profileImage: imagePath, language } },
-        { returnDocument: "after", runValidators: true, upsert: true },
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: "Profile image uploaded successfully",
-        data: updatedDetails,
-      });
-    } catch (error) {
-      return res.status(500).json({ success: false, message: error.message });
     }
-  },
-);
+
+    // 2. Update/upsert the document with new S3 URL
+    const updatedDetails = await PersonalDetails.findOneAndUpdate(
+      { userId, language: targetLanguage },
+      {
+        $set: {
+          profileImage: newImageUrl.trim(),
+          language: targetLanguage,
+        },
+      },
+      { returnDocument: "after", runValidators: true, upsert: true },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile image updated successfully",
+      data: updatedDetails,
+    });
+  } catch (error) {
+    console.error("Error updating profile image:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // -----------------------------------------------------------------------------
 // DELETE: Delete Profile Image
@@ -5631,9 +5871,14 @@ app.post("/api/upload_parallel", upload.single("file"), async (req, res) => {
       .json({ success: false, message: "No file provided" });
   }
 
+  // 1. Check for explicit folder passed via body or query parameters
+  const requestedFolder = req.body.folder || req.query.folder;
+
   // Determine folder based on MIME type
   let folder = "others";
-  if (file.mimetype.startsWith("image/")) {
+  if (requestedFolder === "courseThumbnail") {
+    folder = "courseThumbnail";
+  } else if (file.mimetype.startsWith("image/")) {
     folder = "images";
   } else if (file.mimetype.startsWith("video/")) {
     folder = "videos";
