@@ -42,17 +42,18 @@ import PersonalDetails from "./models/PersonalDetails.js";
 import AdminPost from "./models/AdminPost.js";
 import SupportTeam from "./models/SupportTeam.js";
 import AdminComment from "./models/AdminComment.js";
+import Event from "./models/Event.js";
 
-// import upload from "./middleware/upload.js";
+import upload from "./middleware/upload.js";
 
 // const { Upload } = require("@aws-sdk/lib-storage");
 import { Upload } from "@aws-sdk/lib-storage";
 import multer from "multer";
 // Ensure 'uploads' directory exists
-// if (!fs.existsSync("./uploads")) {
-//   fs.mkdirSync("./uploads");
-// }
-const upload = multer();
+if (!fs.existsSync("./uploads")) {
+  fs.mkdirSync("./uploads");
+}
+// const upload = multer();
 
 const app = express();
 
@@ -97,7 +98,7 @@ app.use(
 // 3. Handle Preflight OPTIONS Requests explicitly
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Connect to MongoDB Atlas
 connectDB();
@@ -5792,6 +5793,104 @@ app.get("/api/admin-profile", async (req, res) => {
   }
 });
 
+app.get("/api/admin-profile/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Validate ObjectId if using standard Mongo IDs
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid User ID format",
+      });
+    }
+
+    const adminDetails = await User.aggregate([
+      // 1. Match specific user by ID and role 'admin'
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(userId),
+          role: "admin",
+        },
+      },
+      // 2. Lookup PersonalDetails matching by userId
+      {
+        $lookup: {
+          from: "personaldetails",
+          let: { adminUserId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: [
+                    { $toString: "$userId" },
+                    { $toString: "$$adminUserId" },
+                  ],
+                },
+              },
+            },
+            // Prioritize documents with non-empty profileImage
+            {
+              $addFields: {
+                hasImage: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $ne: ["$profileImage", null] },
+                        { $ne: ["$profileImage", ""] },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+            { $sort: { hasImage: -1, createdAt: -1 } },
+          ],
+          as: "profileDetails",
+        },
+      },
+      // 3. Project fields and extract profileImage
+      {
+        $project: {
+          _id: 1,
+          username: 1,
+          mobile: 1,
+          role: 1,
+          courseType: 1,
+          language: 1,
+          profileImage: {
+            $ifNull: [
+              { $arrayElemAt: ["$profileDetails.profileImage", 0] },
+              "",
+            ],
+          },
+        },
+      },
+    ]);
+
+    if (!adminDetails || adminDetails.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin user not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: adminDetails[0],
+    });
+  } catch (error) {
+    console.error("Error fetching admin profile:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching admin profile",
+      error: error.message,
+    });
+  }
+});
+
 app.post("/api/media/upload-url", async (req, res) => {
   try {
     const { fileType, folder } = req.body;
@@ -5820,47 +5919,6 @@ app.post("/api/media/upload-url", async (req, res) => {
       .json({ success: false, message: "Failed to generate upload URL" });
   }
 });
-
-// const upload = multer();
-
-// Receive Large file and write in chunks to S3 bucket
-// app.post("/api/upload_parallel", upload.single("file"), (req, res) => {
-//   const file = req.file;
-//   // params for s3 upload
-//   const params = {
-//     Bucket: bucketName,
-//     Key: `${Date.now().toString()}_${file.originalname}`,
-//     Body: file.buffer,
-//   };
-
-//   try {
-//     // upload file to s3 parallelly in chunks
-//     // it supports min 5MB of file size
-//     const uploadParallel = new Upload({
-//       client: s3,
-//       queueSize: 4, // optional concurrency configuration
-//       partSize: 5542880, // optional size of each part
-//       leavePartsOnError: false, // optional manually handle dropped parts
-//       params,
-//     });
-
-//     // checking progress of upload
-//     uploadParallel.on("httpUploadProgress", (progress) => {
-//       console.log(progress);
-//     });
-
-//     // after completion of upload
-//     uploadParallel.done().then((data) => {
-//       console.log("upload completed!", { data });
-//       return res.json({ success: true, data: data.Location });
-//     });
-//   } catch (error) {
-//     res.send({
-//       success: false,
-//       message: error.message,
-//     });
-//   }
-// });
 
 app.post("/api/upload_parallel", upload.single("file"), async (req, res) => {
   const file = req.file;
@@ -5917,6 +5975,117 @@ app.post("/api/upload_parallel", upload.single("file"), async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+});
+
+/**
+ * Deletes file from the root 'uploads' directory
+ */
+const removeFileFromUploads = (imageUrl) => {
+  if (!imageUrl) return;
+
+  // 1. Extract just the filename (e.g., '1710000000-image.jpg')
+  const filename = path.basename(imageUrl);
+
+  // 2. Resolve path starting directly from project root
+  const absolutePath = path.join(process.cwd(), "uploads", filename);
+
+  console.log("Attempting to delete file at:", absolutePath);
+
+  // 3. Delete file asynchronously
+  fs.unlink(absolutePath, (err) => {
+    if (err) {
+      console.error("File deletion failed:", err.message);
+    } else {
+      console.log("File successfully deleted from disk!");
+    }
+  });
+};
+
+app.get("/api/events", async (req, res) => {
+  try {
+    const language = req.query.language || "English";
+    language === "English" ? "English" : "Telugu";
+    const events = await Event.find({ language }).sort({ createdAt: -1 });
+    res.status(200).json({ success: true, data: events });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.post("/api/events", upload.single("image"), async (req, res) => {
+  try {
+    const { title, language } = req.body;
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Please upload an image" });
+    }
+
+    const imageUrl = `/uploads/${req.file.filename}`;
+    const newEvent = await Event.create({
+      title,
+      language: language || "english",
+      imageUrl,
+    });
+
+    res.status(201).json({ success: true, data: newEvent });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.put("/api/events/:id", upload.single("image"), async (req, res) => {
+  try {
+    const { title, language } = req.body;
+    const event = await Event.findById(req.params.id);
+
+    if (!event) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Event not found" });
+    }
+
+    let imageUrl = event.imageUrl;
+
+    // If a new file is uploaded, remove the old file and assign new path
+    if (req.file) {
+      removeFileFromUploads(event.imageUrl);
+      imageUrl = `/uploads/${req.file.filename}`;
+    }
+
+    event.title = title || event.title;
+    event.language = language || event.language;
+    event.imageUrl = imageUrl;
+
+    await event.save();
+    res.status(200).json({ success: true, data: event });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.delete("/api/events/:id", async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Event not found" });
+    }
+
+    // 1. Delete image file from disk
+    removeFileFromUploads(event.imageUrl);
+
+    // 2. Delete document from database
+    await event.deleteOne();
+
+    res.status(200).json({
+      success: true,
+      message: "Event and associated image deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
