@@ -44,7 +44,9 @@ import SupportTeam from "./models/SupportTeam.js";
 import AdminComment from "./models/AdminComment.js";
 import Event from "./models/Event.js";
 
+import { Readable } from "stream";
 import upload from "./middleware/upload.js";
+import uploadS3 from "./middleware/uploadS3.js";
 
 // const { Upload } = require("@aws-sdk/lib-storage");
 import { Upload } from "@aws-sdk/lib-storage";
@@ -2285,6 +2287,59 @@ app.delete("/api/courses/:id", async (req, res) => {
 //   }
 // });
 
+// app.get("/api/notifications", async (req, res) => {
+//   try {
+//     const { userId, language } = req.query;
+
+//     if (!userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId query parameter is required.",
+//       });
+//     }
+
+//     // 1. Fetch user to check role
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User not found.",
+//       });
+//     }
+
+//     // 2. Query notifications for the user
+//     let notifications = await Notification.find({ recipient: userId })
+//       .populate("sender", "username courseType role")
+//       .populate("postId", "content mediaFiles courseType language")
+//       .sort({ createdAt: -1 });
+
+//     // 3. Filter by language ONLY if the user is NOT an admin
+//     if (user.role !== "admin" && language) {
+//       const targetLang =
+//         language.toLowerCase() === "telugu" || language === "te"
+//           ? "Telugu"
+//           : "English";
+
+//       notifications = notifications.filter(
+//         (n) => !n.postId || n.postId.language === targetLang,
+//       );
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       count: notifications.length,
+//       data: notifications,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching notifications:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error",
+//       error: error.message,
+//     });
+//   }
+// });
+
 app.get("/api/notifications", async (req, res) => {
   try {
     const { userId, language } = req.query;
@@ -2305,8 +2360,11 @@ app.get("/api/notifications", async (req, res) => {
       });
     }
 
-    // 2. Query notifications for the user
-    let notifications = await Notification.find({ recipient: userId })
+    // 2. Query ONLY UNREAD notifications for the recipient
+    let notifications = await Notification.find({
+      recipient: userId,
+      isRead: false, // Filter added here
+    })
       .populate("sender", "username courseType role")
       .populate("postId", "content mediaFiles courseType language")
       .sort({ createdAt: -1 });
@@ -2371,6 +2429,41 @@ app.patch("/api/notifications/:id/read", async (req, res) => {
       message: "Server Error",
       error: error.message,
     });
+  }
+});
+
+app.patch("/api/notifications/read-all", async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User ID is required" });
+    }
+
+    // Filter using 'recipient' (matching your schema) instead of 'userId'
+    const filter = {
+      recipient: new mongoose.Types.ObjectId(userId),
+      isRead: false,
+    };
+
+    const result = await Notification.updateMany(filter, {
+      $set: { isRead: true },
+    });
+
+    console.log(
+      `Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}`,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "All notifications marked as read",
+      updatedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    console.error("Error in read-all:", error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -5920,7 +6013,65 @@ app.post("/api/media/upload-url", async (req, res) => {
   }
 });
 
-app.post("/api/upload_parallel", upload.single("file"), async (req, res) => {
+// app.post("/api/upload_parallel", upload.single("file"), async (req, res) => {
+//   const file = req.file;
+
+//   if (!file) {
+//     return res
+//       .status(400)
+//       .json({ success: false, message: "No file provided" });
+//   }
+
+//   // 1. Check for explicit folder passed via body or query parameters
+//   const requestedFolder = req.body.folder || req.query.folder;
+
+//   // Determine folder based on MIME type
+//   let folder = "others";
+//   if (requestedFolder === "courseThumbnail") {
+//     folder = "courseThumbnail";
+//   } else if (file.mimetype.startsWith("image/")) {
+//     folder = "images";
+//   } else if (file.mimetype.startsWith("video/")) {
+//     folder = "videos";
+//   } else if (file.mimetype.startsWith("audio/")) {
+//     folder = "audios";
+//   }
+
+//   // Construct Key with folder prefix
+//   const params = {
+//     Bucket: bucketName,
+//     Key: `${folder}/${Date.now().toString()}_${file.originalname}`,
+//     Body: file.buffer,
+//     ContentType: file.mimetype, // Recommended: preserves file viewer support in browser
+//   };
+
+//   try {
+//     const uploadParallel = new Upload({
+//       client: s3,
+//       queueSize: 4,
+//       partSize: 5542880,
+//       leavePartsOnError: false,
+//       params,
+//     });
+
+//     uploadParallel.on("httpUploadProgress", (progress) => {
+//       console.log(progress);
+//     });
+
+//     const data = await uploadParallel.done();
+//     console.log("upload completed!", { data });
+
+//     // Verify upload success by checking returned S3 Location URL
+//     return res.json({ success: true, data: data.Location });
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// });
+
+app.post("/api/upload_parallel", uploadS3.single("file"), async (req, res) => {
   const file = req.file;
 
   if (!file) {
@@ -5944,12 +6095,15 @@ app.post("/api/upload_parallel", upload.single("file"), async (req, res) => {
     folder = "audios";
   }
 
+  // Convert Multer memory buffer into a Readable Stream for AWS S3
+  const fileStream = Readable.from(file.buffer);
+
   // Construct Key with folder prefix
   const params = {
     Bucket: bucketName,
     Key: `${folder}/${Date.now().toString()}_${file.originalname}`,
-    Body: file.buffer,
-    ContentType: file.mimetype, // Recommended: preserves file viewer support in browser
+    Body: fileStream, // Pass the Readable Stream here instead of raw file.buffer
+    ContentType: file.mimetype,
   };
 
   try {
@@ -5968,16 +6122,16 @@ app.post("/api/upload_parallel", upload.single("file"), async (req, res) => {
     const data = await uploadParallel.done();
     console.log("upload completed!", { data });
 
-    // Verify upload success by checking returned S3 Location URL
+    // Return S3 URL
     return res.json({ success: true, data: data.Location });
   } catch (error) {
+    console.error("S3 Upload Error:", error);
     return res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 });
-
 /**
  * Deletes file from the root 'uploads' directory
  */
