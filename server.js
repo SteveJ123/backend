@@ -43,6 +43,7 @@ import AdminPost from "./models/AdminPost.js";
 import SupportTeam from "./models/SupportTeam.js";
 import AdminComment from "./models/AdminComment.js";
 import Event from "./models/Event.js";
+import Nutrition from "./models/Nutrition.js";
 
 import { Readable } from "stream";
 import upload from "./middleware/upload.js";
@@ -6243,6 +6244,157 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 });
 
+// // GET ALL ITEMS (Filtered by Language)
+// app.get("/api/nutrition", async (req, res) => {
+//   try {
+//     const { language } = req.query;
+//     let query = {};
+//     if (language) {
+//       const targetLang =
+//         language.toLowerCase() === "te" || language.toLowerCase() === "telugu"
+//           ? "Telugu"
+//           : "English";
+//       query.language = targetLang;
+//     }
+//     const items = await Nutrition.find(query).sort({ createdAt: -1 });
+//     return res.status(200).json({ success: true, data: items });
+//   } catch (err) {
+//     return res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// // CREATE ITEM
+// app.post("/api/nutrition", async (req, res) => {
+//   try {
+//     const newItem = new Nutrition(req.body);
+//     await newItem.save();
+//     return res.status(201).json({ success: true, data: newItem });
+//   } catch (err) {
+//     return res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// // UPDATE ITEM
+// app.put("/api/nutrition/:id", async (req, res) => {
+//   try {
+//     const updatedItem = await Nutrition.findByIdAndUpdate(
+//       req.params.id,
+//       req.body,
+//       { new: true },
+//     );
+//     return res.status(200).json({ success: true, data: updatedItem });
+//   } catch (err) {
+//     return res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// // DELETE ITEM
+// app.delete("/api/nutrition/:id", async (req, res) => {
+//   try {
+//     await Nutrition.findByIdAndDelete(req.params.id);
+//     return res
+//       .status(200)
+//       .json({ success: true, message: "Item deleted successfully" });
+//   } catch (err) {
+//     return res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// GET ALL ITEMS (Filtered by Language)
+app.get("/api/nutrition", async (req, res) => {
+  try {
+    const { language } = req.query;
+    let query = {};
+    if (language) {
+      const targetLang =
+        language.toLowerCase() === "te" || language.toLowerCase() === "telugu"
+          ? "Telugu"
+          : "English";
+      query.language = targetLang;
+    }
+    const items = await Nutrition.find(query).sort({ createdAt: -1 });
+    return res.status(200).json({ success: true, data: items });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET SINGLE ITEM BY ID
+app.get("/api/nutrition/:id", async (req, res) => {
+  try {
+    const item = await Nutrition.findById(req.params.id);
+    if (!item) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Item not found" });
+    }
+    return res.status(200).json({ success: true, data: item });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// CREATE ITEM (Saves imageUrl string directly to MongoDB)
+app.post("/api/nutrition", async (req, res) => {
+  try {
+    const { title, category, language, imageUrl, ingredients, description } =
+      req.body;
+
+    if (!imageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "Image URL is required",
+      });
+    }
+
+    const newItem = new Nutrition({
+      title,
+      category,
+      language,
+      imageUrl,
+      ingredients,
+      description,
+    });
+
+    await newItem.save();
+    return res.status(201).json({ success: true, data: newItem });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// UPDATE ITEM (Updates imageUrl and other fields directly)
+app.put("/api/nutrition/:id", async (req, res) => {
+  try {
+    const updatedItem = await Nutrition.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedItem) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Item not found" });
+    }
+
+    return res.status(200).json({ success: true, data: updatedItem });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE ITEM
+app.delete("/api/nutrition/:id", async (req, res) => {
+  try {
+    await Nutrition.findByIdAndDelete(req.params.id);
+    return res
+      .status(200)
+      .json({ success: true, message: "Item deleted successfully" });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 // Mount the course routes under the '/api/courses' prefix
 app.use("/api/course", courseRoutes);
 
